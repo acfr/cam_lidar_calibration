@@ -1,0 +1,25 @@
+# This file contains the parameters for the vn100_driver ros node
+serial_port: /dev/ttyUSB0
+serial_baud: 230400
+
+# messages containing the wheel speed
+wheel_speed_topic: /zio/odometry/rear
+
+# output messages for odometry
+publish_odometry_topic: odometry
+
+# imu specification from http://www.vectornav.com/products/vn-100/specifications
+# gyroscope drifts around 10 degrees per hour
+#  = (drift in degrees/sec) * (deg to rad) * 100hz sampling
+#  = (10./60.*60.) * (math.pi/180.) * 0.01 = 4.85e-7
+gyro_sample_error: 4.85e-7
+
+# accelerometer estimated error per sample = In-Run Bias Stability
+#  = 0.04mg
+#  = 0.04 * 9.81 * 1e-3
+accelerometer_sample_error: 3.924e-4
+
+# dynamic attitude sample error 2 degrees heading, 1 degree pitch/roll
+#  convert to radians
+heading_sample_error: 3.49e-2
+pitch_roll_sample_error: 1.75e-2

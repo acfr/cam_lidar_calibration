@@ -1,0 +1,8 @@
+<library path="lib/libfeature_extraction">
+  <class name="extrinsic_calibration/feature_extraction" type="extrinsic_calibration::feature_extraction" base_class_type="nodelet::Nodelet">
+    <description> 
+      Obtains features from the checkerboard
+    </description>
+  </class>
+
+</library>

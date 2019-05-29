@@ -1,0 +1,17 @@
+<launch>
+
+  <node pkg="nodelet" type="nodelet" name="nodelet_manager"  args="manager" output="screen"/>
+
+  <node pkg="nodelet" type="nodelet" name="feature_extraction" args="load extrinsic_calibration/feature_extraction nodelet_manager" output="screen" required="true">
+  </node>
+
+  <node pkg="cam_lidar_calibration" type="input_sample" name="input_sample" output="screen">
+  </node>
+  
+  <node pkg="cam_lidar_calibration" type="optimizer" name="optimizer" output="screen">
+  </node>
+
+</launch>
+
+
+
