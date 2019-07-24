@@ -10,6 +10,10 @@
   
   <node pkg="cam_lidar_calibration" type="optimizer" name="optimizer" output="screen">
   </node>
+  
+  <node pkg="rviz" type="rviz" name="rviz" args="-d ~/.rviz/cam_lidar_calibration.rviz" />
+
+  <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure" />
 
 </launch>
 
