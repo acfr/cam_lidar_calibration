@@ -18,15 +18,17 @@ In general, calibration accuracy improves as more samples are collected.
 
 ![alt text](img/Checker.png "checkerboard poses")
 
-## Pre-requisites (to be entered in cfg/initial_params.txt in the described order)
-1. Name of the image topic 
-2. Name of the point cloud topic 
-3. Type of camera lens (1 for fisheye; 0 for pinhole)
-4. Number of lidar beams (Eg. 16, 32, 64 etc)
-5. Size of the checkerboard (Eg. 8X6 written as 8 6)
-6. Side length of each square in the checkerboard in millimetres (mm) (Eg. 65)
-7. Length and breadth of the target in mm (Eg. 905 600 ; length = 905 mm, breadth = 600 mm)
-8. Error in checkerboard placement along the length and breadth of the rectangular board. 
+## Pre-requisites 
+1. Ensure that the camera and the lidar have ros drivers such that the device output is a ROS message. 
+2. Enter the following in the described order in `cfg/initial_params.txt`
+- Name of the image topic 
+- Name of the point cloud topic 
+- Type of camera lens (1 for fisheye; 0 for pinhole)
+- Number of lidar beams (Eg. 16, 32, 64 etc)
+- Size of the checkerboard (Eg. 8X6 written as 8 6)
+- Side length of each square in the checkerboard in millimetres (mm) (Eg. 65)
+- Length and breadth of the target in mm (Eg. 905 600 ; length = 905 mm, breadth = 600 mm)
+- Error in checkerboard placement along the length and breadth of the rectangular board. 
 Ideally, the checkerboard centre should align with the board centre. However, if that's not the case, you can account for the translational errors along the length 
 and breadth of the board atop which the checkerboard is fixed. 
 For error along the length, if the checkerboard centre is above the board centre, the error (in mm) is positive else it is negative.
@@ -37,32 +39,41 @@ original position by 20 mm)
 ![alt text](img/positive_length.png "Experimental Setup")
 ![alt text](img/xpositive.png "Experimental Setup")
 
-9. 3X3 Camera intrinsic matrix (Units in mm)
-10. Number of camera distortion coefficients (Our distortion function uses 4 coefficients for fisheye lens and 5 coefficients for pinhole lens)
-11. Camera distortion coefficients
-12. Image Size in pixels (Eg. 1920 1208)
+- 3X3 Camera intrinsic matrix (Units in mm)
+- Number of camera distortion coefficients (Our distortion function uses 4 coefficients for fisheye lens and 5 coefficients for pinhole lens)
+- Camera distortion coefficients
+- Image Size in pixels (Eg. 1920 1208)
 
 ## Procedure 
-1. Start the Rosmaster and open Rviz for visualization. 
+1. Launch the calibration package
+`roslauch cam_lidar_calibration cam_lidar_calibration.launch`
 
-`$roscore`
+2. Rviz and reconfigure_gui will open up.
 
-`$rviz`
+3. Rviz is used to visualize the features in the point cloud and the image. The end result - point cloud projection on the image - is also shown. 
+
+The subscribed images are 
+- Raw camera image (change the image topic)
+- camera image with checkerboard features
+- point cloud projection on the image
+
+The subscribed point clouds are 
+- Experimental region point cloud
+- Target plane and features
+
+4. In the GUI, choose the node `feature_extraction` from `camera_features`. 
+You will see slider bars corresponding to the bounds of the 3D experimental region along the lidar's x, y, and z axis. 
+The slider bars can be varied and the corresponding experimental region can be visualized in Rviz. 
+![alt text](img/reconfigure_gui.png "reconfigure_gui")
+
+5. Start the data collection process by placing the checkerboard facing the sensor pair. 
+If you are doing offline calibration, i.e. if you have a rosbag with recorded samples, then run the bag. 
+`rosbag play samples.bag`, where `samples.bag` is the name of your rosbag.
 
 
-2. Firstly, we determine the 3D experimental region where the target will be placed. This is done with the help of a GUI where slider bars can be varied to 
-set the minimum and maximum bounds of the 3D experimental region along the lidar's x, y, and z axis. The visualization can be simulataneously seen in Rviz.
-In Fig. 2, the region is illustrated by a orange box.
-Run the commands below to open up a GUI with slider bars (with x, y, z bounds) and to visualize the features on the checkerboard (board plane normal vector, 
-board centre and corner points).  
 
-`$rosrun nodelet nodelet manager __name:=nodelet_manager`
 
-`$rosrun nodelet nodelet load extrinsic_calibration/feature_extraction nodelet_manager`
 
-`rosrun rqt_reconfigure rqt_reconfigure`
-
-3. In Rviz, subscribe to the topics "Experimental_region", "velodyne_features", "camera_features", "visualization_marker", and "boardcorners"
 
 
 
