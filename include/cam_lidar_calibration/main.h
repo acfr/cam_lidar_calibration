@@ -49,6 +49,7 @@
 #include <ros/package.h>
 #include <iostream>
 #include <utility>
+#include <boost/thread.hpp>
 
 using namespace cv;
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;         
