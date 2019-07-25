@@ -13,10 +13,11 @@
 ## Data Collection
 
 1. For calibration, it is required to place the target in different locations and orientations relative to the camera-lidar sensor pair.
-2. Make sure that the 3D experimental region in which the target will be placed is free from any other objects apart from the board and its stand. 
+2. Make sure that the 3D experimental region (depicted by an orange box in the figure above) 
+in which the target will be placed is free from any other objects apart from the board and its stand. 
 3. Ensure that the entire board is visible to both sensors. 
-3. A minimum of 3 checkerboard poses or samples are to be collected. Satisfactory calibration results are obtained with around 9 samples. 
-In general, calibration accuracy improves as more samples are collected.
+3. A minimum of 3 checkerboard poses or samples are to be collected. Satisfactory calibration results are obtained with around 8-9 samples. 
+In general, calibration accuracy improves as more samples are collected as shown below.
 
 ![alt text](img/Checker.png "checkerboard poses")
 
@@ -54,7 +55,7 @@ original position by 20 mm)
 
 2. Rviz and reconfigure_gui will open up.
 
-3. Rviz is used to visualize the features in the point cloud and the image. The end result - point cloud projection on the image - is also shown. 
+3. Rviz is used to visualize the features in the point cloud and in the image. The end result - point cloud projection on the image - is also shown. 
 
 The subscribed images are 
 - Raw camera image (change the image topic)
@@ -73,18 +74,21 @@ The slider bars can be varied and the corresponding experimental region can be v
 
 5. Start the data collection process by placing the checkerboard facing the sensor pair. 
 If you are doing offline calibration, i.e. if you have a rosbag with recorded samples, then run the bag. 
-`rosbag play samples.bag`, where `samples.bag` is the name of your rosbag.
+`rosbag play samples.bag`, where `samples.bag` is the path to your rosbag.
 
 6. Press keyboard keys to perform the following tasks. 
 - ‘i’ to collect a sample. 
 As soon as 'i' is pressed, features can be seen in the point cloud and in the image (in Rviz). 
 - ‘enter’ to include the collected sample for optimization. 
-At times, the collected sample doesn't yield good features. 
+At times, the collected sample doesn't yield good features (shown below as seen in Rviz). 
 This could be due to improper experimental region bounds or lesser number of scan lines passing each edge of the target. 
-If that's the case, 'enter' need not be pressed. 
+If that's the case, 'enter' need not be pressed. That way, the sample will not be considered as an input to the optimizer.  
+
+![alt text](img/bad_sample.png "bad sample")
+
 - ‘o’ to begin the optimization process after sample inclusion.
 
-7. The extrinsic parameters are displayed in the terminal and can be interpreted (in order) as follows: 
+7. After optimization is completed, the extrinsic parameters are displayed in the terminal and can be interpreted (in order) as follows: 
 roll, pitch, yaw, x, y, and z of the camera frame with respect to the lidar frame. 
 The angles are in radians and the translation units are in centimetres. 
 
