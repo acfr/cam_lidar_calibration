@@ -84,9 +84,17 @@ This could be due to improper experimental region bounds or lesser number of sca
 If that's the case, 'enter' need not be pressed. 
 - ‘o’ to begin the optimization process after sample inclusion.
 
-7. The extrinsic parameters are displayed in the terminal and the point cloud projection on the image can be seen in Rviz.
+7. The extrinsic parameters are displayed in the terminal and can be interpreted (in order) as follows: 
+roll, pitch, yaw, x, y, and z of the camera frame with respect to the lidar frame. 
+The angles are in radians and the translation units are in centimetres. 
 
-For more information, view the calibration paper: https://arxiv.org/abs/1904.12433
+8. The point cloud projection on the image can be seen in Rviz.
+
+![alt text](img/visualization.png "rviz window")
+
+For more information, view the [calibration paper](https://arxiv.org/abs/1904.12433).
+
+A video of the calibration process can be viewed [here](https://www.youtube.com/watch?v=GD2c3jLBDZU). 
 
 
 
