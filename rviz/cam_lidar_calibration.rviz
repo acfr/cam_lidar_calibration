@@ -110,7 +110,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.00999999978
       Style: Flat Squares
-      Topic: /feature_extraction/Experimental_region
+      Topic: Experimental_region
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -140,14 +140,14 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.00999999978
       Style: Flat Squares
-      Topic: /feature_extraction/velodyne_features
+      Topic: /velodyne_features
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /feature_extraction/boardcorners
+      Marker Topic: /boardcorners
       Name: Marker
       Namespaces:
         {}
@@ -155,7 +155,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /feature_extraction/visualization_marker
+      Marker Topic: /visualization_marker
       Name: Marker
       Namespaces:
         {}
