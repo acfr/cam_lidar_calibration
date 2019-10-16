@@ -51,7 +51,7 @@ original position by 20 mm)
 ## Procedure 
 
 1. Launch the calibration package
-`roslauch cam_lidar_calibration cam_lidar_calibration.launch`
+`roslaunch cam_lidar_calibration cam_lidar_calibration.launch`
 
 2. Rviz and reconfigure_gui will open up.
 
