@@ -65,7 +65,7 @@ if(catkin_EXPORTED_LIBRARIES)
 endif()
 
 ## Mark the nodelet library for installations
-install(TARGETS feature_extraction 
+install(TARGETS feature_extraction optimizer input_sample
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
