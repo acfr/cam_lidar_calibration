@@ -53,9 +53,10 @@ target_link_libraries(input_sample ${catkin_LIBRARIES})
 
 add_executable(optimizer src/optimizer.cpp)
 target_link_libraries(optimizer ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
+add_dependencies(optimizer cam_lidar_calibration_generate_messages_cpp)
 
 ## Create the nodelet tutorial library
-add_library(feature_extraction src/main.cpp)
+add_executable(feature_extraction src/main.cpp)
 add_dependencies(feature_extraction ${PROJECT_NAME}_gencfg)
 
 target_link_libraries(feature_extraction ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
@@ -64,7 +65,7 @@ if(catkin_EXPORTED_LIBRARIES)
 endif()
 
 ## Mark the nodelet library for installations
-install(TARGETS feature_extraction 
+install(TARGETS feature_extraction optimizer input_sample
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

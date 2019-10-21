@@ -49,6 +49,7 @@
 #include <ros/package.h>
 #include <iostream>
 #include <utility>
+#include <boost/thread.hpp>
 
 using namespace cv;
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;         
@@ -66,6 +67,10 @@ public:
   void flag_cb(const std_msgs::Int8::ConstPtr& msg);
   void bounds_callback(cam_lidar_calibration::boundsConfig &config, uint32_t level);
   double * converto_imgpts(double x, double y, double z);
+
+  void bypass_init() {
+    this->onInit();
+  }
 
 private:
 
@@ -112,5 +117,5 @@ private:
   boost::shared_ptr<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>> server;
 };
 
-PLUGINLIB_DECLARE_CLASS(extrinsic_calibration, feature_extraction, extrinsic_calibration::feature_extraction, nodelet::Nodelet);
+//PLUGINLIB_EXPORT_CLASS(extrinsic_calibration::feature_extraction, nodelet::Nodelet);
 }

@@ -41,9 +41,9 @@
 
 #define PI 3.141592653589793238463
 
-int sample = 0; 
+int sample = 0;
 bool sensor_pair = 0;
-bool output = 0; 
+bool output = 0;
 bool output2 = 0;
 static cv::Mat new_K;
 cv::Mat raw_image, undist_image;
@@ -88,7 +88,7 @@ struct CameraVelodyneCalibrationData
   cv::Mat velodynecorners_mat; //nX3
   cv::Mat pixeldata_mat; //1X3
 
-}calibrationdata; 
+}calibrationdata;
 
 struct initial_parameters
 {
@@ -106,7 +106,7 @@ struct initial_parameters
   std::pair<int,int> image_size;
 }i_params;
 
-struct Rotation 
+struct Rotation
 {
   double e1; // Rotation optimization variables
   double e2;
@@ -159,7 +159,7 @@ typedef EA::Genetic<Rotation,Rotationcost> GA_Type;
 typedef EA::Genetic<Rot_Trans, Rot_Trans_cost> GA_Type2;
 
 void init_genes2(Rot_Trans& p,const std::function<double(void)> &rnd01)
-{  
+{
   std::vector< double > pi_vals;
   pi_vals.push_back(PI/18);
   pi_vals.push_back(-PI/18);
@@ -179,7 +179,7 @@ void init_genes2(Rot_Trans& p,const std::function<double(void)> &rnd01)
   p.y = eul_t.y + trans_vals.at(RandIndex)*rnd01();
   RandIndex = rand() % 2;
   p.z = eul_t.z + trans_vals.at(RandIndex)*rnd01();
-} 
+}
 
 double rotation_fitness_func(double e1, double e2, double e3)
 {
@@ -329,7 +329,7 @@ Rot_Trans mutate2 (const Rot_Trans& X_base, const std::function<double(void)> &r
   return X_new;
 }
 
-Rot_Trans crossover2 (const Rot_Trans& X1, 
+Rot_Trans crossover2 (const Rot_Trans& X1,
                       const Rot_Trans& X2,
                       const std::function<double(void)> &rnd01)
 {
@@ -359,11 +359,11 @@ double calculate_SO_total_fitness2 (const GA_Type2::thisChromosomeType &X)
 }
 
 // A function to show/store the results of each generation.
-void SO_report_generation2 (int generation_number, 
+void SO_report_generation2 (int generation_number,
                             const EA::GenerationType<Rot_Trans,
                             Rot_Trans_cost> &last_generation,
                             const Rot_Trans& best_genes)
-{   
+{
   eul_it.e1 = best_genes.e1;
   eul_it.e2 = best_genes.e2;
   eul_it.e3 = best_genes.e3;
@@ -373,7 +373,7 @@ void SO_report_generation2 (int generation_number,
 }
 
 void init_genes(Rotation& p, const std::function<double(void)> &rnd01)
-{  
+{
   std::vector<double> pi_vals;
   pi_vals.push_back(PI/8);
   pi_vals.push_back(-PI/8);
@@ -383,7 +383,7 @@ void init_genes(Rotation& p, const std::function<double(void)> &rnd01)
   p.e2 = eul.e2 + pi_vals.at(RandIndex)*rnd01();
   RandIndex = rand() % 2;
   p.e3 = eul.e3 + pi_vals.at(RandIndex)*rnd01();
-} 
+}
 
 bool eval_solution (const Rotation& p, Rotationcost &c)
 {
@@ -396,7 +396,7 @@ bool eval_solution (const Rotation& p, Rotationcost &c)
   return true; // solution is accepted
 }
 
-Rotation mutate (const Rotation& X_base, 
+Rotation mutate (const Rotation& X_base,
                  const std::function<double(void)> &rnd01,
                  double shrink_scale)
 {
@@ -415,7 +415,7 @@ Rotation mutate (const Rotation& X_base,
   return X_new;
 }
 
-Rotation crossover (const Rotation& X1, 
+Rotation crossover (const Rotation& X1,
                     const Rotation& X2,
                     const std::function<double(void)> &rnd01)
 {
@@ -437,7 +437,7 @@ double calculate_SO_total_fitness (const GA_Type::thisChromosomeType &X)
 }
 
 // A function to show/store the results of each generation.
-void SO_report_generation (int generation_number, 
+void SO_report_generation (int generation_number,
                            const EA::GenerationType<Rotation,Rotationcost> &last_generation,
                            const Rotation& best_genes)
 {
@@ -456,7 +456,7 @@ void SO_report_generation (int generation_number,
 }
 
 
-void get_samples(const cam_lidar_calibration::calibration_data::ConstPtr &data) 
+void get_samples(const cam_lidar_calibration::calibration_data::ConstPtr &data)
 {
   sample++;
   std::cout << "sample" << sample << std::endl;
@@ -483,8 +483,8 @@ void get_samples(const cam_lidar_calibration::calibration_data::ConstPtr &data)
   calibrationdata.pixeldata.push_back(data->pixeldata);
 }
 
-void my_flag(const std_msgs::Int8::ConstPtr& msg) 
-{  
+void my_flag(const std_msgs::Int8::ConstPtr& msg)
+{
   // runs if you press 'o'
   if (msg->data == 2)
   {
@@ -515,55 +515,6 @@ void my_flag(const std_msgs::Int8::ConstPtr& msg)
       calibrationdata.pixeldata_mat.at<double>(i)
           = calibrationdata.pixeldata[i];
     }
-//    std::cout << calibrationdata.camerapoints_mat << std::endl;
-//    std::cout << calibrationdata.cameranormals_mat << std::endl;
-//    std::cout << calibrationdata.velodynepoints_mat << std::endl;
-//    std::cout << calibrationdata.velodynenormals_mat << std::endl;
-//    std::cout << calibrationdata.pixeldata_mat << std::endl;
-
-
-//    sample = 8;std::cout << "pre-collected samples" << std::endl;
-//    calibrationdata.camerapoints_mat = (cv::Mat_<double>(sample, 3) << -1.1264   ,-0.2787   , 1.6854,
-//                                        -1.1387 ,  -0.2811 ,   1.9453,
-//                                        -1.0020 ,  -0.2758 ,   1.6616,
-//                                        -0.5975 ,  -0.2702 ,   1.6251,
-//                                        -0.5975 ,  -0.2702 ,   1.6251,
-//                                        -0.1497 ,  -0.3858 ,   1.8967,
-//                                        0.4684 ,  -0.4874 ,   1.7430,
-//                                        1.1568 ,  -0.5723 ,   1.6969 );
-//    calibrationdata.cameranormals_mat = (cv::Mat_<double>(sample, 3) << 0.3326 ,  -0.0349  , -0.9424,
-//                                         0.0982 ,  -0.0428 ,  -0.9942,
-//                                         0.3902 ,  -0.0287  , -0.9203,
-//                                         0.2422 ,  -0.0315 ,  -0.9697,
-//                                         0.2422 ,  -0.0315 ,  -0.9697,
-//                                         -0.0517 ,  -0.0451 ,  -0.9976,
-//                                         -0.2994 ,  -0.0418 ,  -0.9532,
-//                                         -0.3761 ,  -0.0362 ,  -0.9259 );
-//    calibrationdata.velodynepoints_mat = (cv::Mat_<double>(sample, 3) << 0.1544 ,  -2.5301,    0.0750,
-//                                          0.0217 ,  -2.7610 ,   0.0454,
-//                                          0.0519 ,  -2.4407 ,   0.0571,
-//                                          -0.2722 ,  -2.2029 ,   0.0245,
-//                                          -0.2722 ,  -2.2029 ,   0.0245,
-//                                          -0.8253 ,  -2.2211 ,   0.0703,
-//                                          -1.2831 ,  -1.7688  ,  0.1377,
-//                                          -1.8575 ,  -1.3682  ,  0.1577 );
-//    calibrationdata.velodynenormals_mat = (cv::Mat_<double>(sample, 3) << 0.1777,    0.9801,   0.0880,
-//                                           0.4055 ,   0.9067,    0.1156,
-//                                           0.0994 ,   0.9934,    0.0580,
-//                                           0.2692 ,   0.9602,    0.0741,
-//                                           0.2692 ,   0.9602,    0.0741,
-//                                           0.5423 ,   0.8296 ,   0.1330,
-//                                           0.7410 ,   0.6547 ,   0.1495,
-//                                           0.7908 ,   0.5928 ,   0.1521);
-//    calibrationdata.velodynecorners_mat = (cv::Mat_<double>(sample, 3) << 0.0433,   -2.5581 ,   0.6109,
-//                                           -0.0900  , -2.7810 ,   0.5935,
-//                                           -0.0463 , -2.4631  ,  0.6098,
-//                                           -0.3702 ,  -2.2182 ,   0.5782,
-//                                           -0.3702 ,  -2.2182 ,   0.5782,
-//                                           -0.9294 ,  -2.2424 ,   0.6276,
-//                                           -1.3863 ,  -1.7745 ,   0.6743,
-//                                           -1.9587 ,  -1.3751 ,   0.7104);
-//    calibrationdata.pixeldata_mat = (cv::Mat_<double>(1, sample) << 0.0019, 0.0022, 0.0018, 0.0016, 0.0016, 0.0017, 0.0016, 0.0018);
 
     cv::Mat NN = calibrationdata.cameranormals_mat.t()*calibrationdata.cameranormals_mat;
     cv::Mat NM = calibrationdata.cameranormals_mat.t()*calibrationdata.velodynenormals_mat;
@@ -721,7 +672,7 @@ int main(int argc, char **argv)
   ros::spin();
   return 0;
 }
-// Function converts rotation matrix to corresponding euler angles 
+// Function converts rotation matrix to corresponding euler angles
 std::vector<double> rotm2eul(cv::Mat mat)
 {
   std::vector<double> euler(3);
@@ -732,7 +683,7 @@ std::vector<double> rotm2eul(cv::Mat mat)
 }
 double tmpxC;
 double * converto_imgpts(double x, double y, double z)
-{  
+{
   tmpxC = x/z;
   double tmpyC = y/z;
   cv::Point2d planepointsC;
@@ -772,7 +723,7 @@ double * converto_imgpts(double x, double y, double z)
   return img_coord;
 }
 
-void sensor_info_callback(const sensor_msgs::Image::ConstPtr &img, const sensor_msgs::PointCloud2::ConstPtr &pc) 
+void sensor_info_callback(const sensor_msgs::Image::ConstPtr &img, const sensor_msgs::PointCloud2::ConstPtr &pc)
 {
   if (!sensor_pair) // Take the first synchronized camera-lidar pair from the input
   {
@@ -821,8 +772,6 @@ void image_projection(Rot_Trans rot_trans)
   pcl::PointCloud<pcl::PointXYZIR> organized;
   organized = organized_pointcloud(cloud);
 
-  cv::Mat mask = cv::Mat::zeros(cv::Size(i_params.image_size.first, i_params.image_size.second), CV_8U);
-
   for (pcl::PointCloud<pcl::PointXYZIR>::const_iterator it = organized.begin(); it != organized.end(); it++)
   {
     pcl::PointXYZIR itA;
@@ -840,19 +789,6 @@ void image_projection(Rot_Trans rot_trans)
       cv::circle(new_image_raw, cv::Point(img_pts[0], img_pts[1]), 3,
           CV_RGB(255*colmap[color][0], 255*colmap[color][1], 255*colmap[color][2]), -1);
     }
-
-    if (img_pts[1] >=20  and img_pts[1] < 1100 and img_pts[0] >=3 and img_pts[0] < 1910 and std::abs(tmpxC) < 1.3)
-    { //if the point can be seen from the center camera{
-      int h = int(mask.at<uchar>(img_pts[1], img_pts[0]));
-      if (h<1)
-      {
-        cv::circle(new_image_raw, cv::Point(img_pts[0], img_pts[1]), 3,
-            CV_RGB(255*colmap[color][0], 255*colmap[color][1], 255*colmap[color][2]), -1);
-        cv::Rect r = cv::Rect(int(img_pts[0]-2), int(img_pts[1]-20), 5, 40);
-        mask(r) = 2;
-      }
-    }
-
   }
 
   // Publish the image projection
@@ -864,7 +800,7 @@ void image_projection(Rot_Trans rot_trans)
   pub_img_dist.publish(cv_ptr->toImageMsg());
 }
 
-pcl::PointCloud<pcl::PointXYZIR> organized_pointcloud(pcl::PointCloud<pcl::PointXYZIR>::Ptr input_pointcloud) 
+pcl::PointCloud<pcl::PointXYZIR> organized_pointcloud(pcl::PointCloud<pcl::PointXYZIR>::Ptr input_pointcloud)
 {
   pcl::PointCloud<pcl::PointXYZIR> organized_pc;
   pcl::KdTreeFLANN<pcl::PointXYZIR> kdtree;

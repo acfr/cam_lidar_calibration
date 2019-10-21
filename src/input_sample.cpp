@@ -50,7 +50,7 @@ int main(int argc, char** argv)
     }
     if (c == '\n') // flag to use the input sample
     {
-      flag.data = 3;
+      flag.data = 4;
       sample_publisher.publish(flag);
     }
     if (c == 'e') // flag to terminate the node; if you do Ctrl+C, press enter after that
