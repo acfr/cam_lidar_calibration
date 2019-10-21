@@ -42,8 +42,7 @@ catkin_package(
 	roscpp 
 	std_msgs 
 	sensor_msgs
-        message_runtime 
-  DEPENDS system_lib Eigen        
+	message_runtime
 )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
@@ -82,3 +81,11 @@ install(DIRECTORY include/${PROJECT_NAME}/
 install(DIRECTORY launch/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
 )
+
+install(DIRECTORY cfg/
+		DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cfg
+)
+
+install(DIRECTORY rviz/
+		DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
+		)
