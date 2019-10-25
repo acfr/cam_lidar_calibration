@@ -1,13 +1,39 @@
-#include "main.h"
+#include <ros/package.h>
+
+#include "point_xyzir.h"
+#include <pcl/point_cloud.h>
+#include <pcl/common/intersections.h>
+
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/impl/extract_indices.hpp>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/impl/passthrough.hpp>
+#include <pcl/filters/project_inliers.h>
+#include <pcl/filters/impl/project_inliers.hpp>
+#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/segmentation/impl/sac_segmentation.hpp>
+
+#include <opencv2/calib3d.hpp>
+
+#include <cv_bridge/cv_bridge.h>
+#include <pcl_ros/point_cloud.h>
+#include <sensor_msgs/image_encodings.h>
+
+#include "feature_extractor.h"
+
+using cv::findChessboardCorners;
+using cv::Mat_;
+using cv::Size;
+using cv::TermCriteria;
 
 int main(int argc, char** argv)
 {
   // Initialize Node and handles
-  ros::init(argc, argv, "feature_extraction");
+  ros::init(argc, argv, "FeatureExtractor");
   ros::NodeHandle n;
 
-  extrinsic_calibration::feature_extraction feature_extraction;
-  feature_extraction.bypass_init();
+  extrinsic_calibration::FeatureExtractor FeatureExtractor;
+  FeatureExtractor.bypassInit();
   ros::spin();
 
   return 0;
@@ -15,11 +41,7 @@ int main(int argc, char** argv)
 
 namespace extrinsic_calibration
 {
-feature_extraction::feature_extraction()
-{
-}
-
-void feature_extraction::onInit()
+void FeatureExtractor::onInit()
 {
   // Read input parameters from configuration file
   pkg_loc = ros::package::getPath("cam_lidar_calibration");
@@ -69,29 +91,29 @@ void feature_extraction::onInit()
   // Dynamic reconfigure gui to set the experimental region bounds
   server = boost::make_shared<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>>(pnh);
   dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>::CallbackType f;
-  f = boost::bind(&feature_extraction::bounds_callback, this, _1, _2);
+  f = boost::bind(&FeatureExtractor::boundsCB, this, _1, _2);
   server->setCallback(f);
 
   // Synchronizer to get synchronized camera-lidar scan pairs
   sync = new message_filters::Synchronizer<MySyncPolicy>(MySyncPolicy(queue_rate), *image_sub, *pcl_sub);
-  sync->registerCallback(boost::bind(&feature_extraction::extractROI, this, _1, _2));
+  sync->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
 
   roi_publisher = public_nh.advertise<cam_lidar_calibration::calibration_data>("roi/points", 10, true);
   pub_cloud = public_nh.advertise<sensor_msgs::PointCloud2>("velodyne_features", 1);
   expt_region = public_nh.advertise<sensor_msgs::PointCloud2>("Experimental_region", 10);
-  flag_subscriber = public_nh.subscribe<std_msgs::Int8>("/flag", 1, &feature_extraction::flag_cb, this);
+  flag_subscriber = public_nh.subscribe<std_msgs::Int8>("/flag", 1, &FeatureExtractor::flagCB, this);
   vis_pub = public_nh.advertise<visualization_msgs::Marker>("visualization_marker", 0);
   visPub = public_nh.advertise<visualization_msgs::Marker>("boardcorners", 0);
   image_publisher = it_p_->advertise("camera_features", 1);
   NODELET_INFO_STREAM("Camera Lidar Calibration");
 }
 
-void feature_extraction::flag_cb(const std_msgs::Int8::ConstPtr& msg)
+void FeatureExtractor::flagCB(const std_msgs::Int8::ConstPtr& msg)
 {
   flag = msg->data;  // read flag published by input_sample node
 }
 
-void feature_extraction::bounds_callback(cam_lidar_calibration::boundsConfig& config, uint32_t level)
+void FeatureExtractor::boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level)
 {
   // Read the values corresponding to the motion of slider bars in reconfigure gui
   bound = config;
@@ -100,7 +122,7 @@ void feature_extraction::bounds_callback(cam_lidar_calibration::boundsConfig& co
 }
 
 // Convert 3D points w.r.t camera frame to 2D pixel points in image frame
-double* feature_extraction::converto_imgpts(double x, double y, double z)
+double* FeatureExtractor::convertToImagePoints(double x, double y, double z)
 {
   double tmpxC = x / z;
   double tmpyC = y / z;
@@ -142,8 +164,8 @@ double* feature_extraction::converto_imgpts(double x, double y, double z)
 }
 
 // Extract features of interest
-void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
-                                    const sensor_msgs::PointCloud2::ConstPtr& pc)
+void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img,
+                                               const sensor_msgs::PointCloud2::ConstPtr& pc)
 {
   pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZIR>),
       cloud_filtered1(new pcl::PointCloud<pcl::PointXYZIR>), cloud_passthrough1(new pcl::PointCloud<pcl::PointXYZIR>);
@@ -201,7 +223,7 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
     cv::cvtColor(cv_ptr->image, gray, CV_BGR2GRAY);
     // Find checkerboard pattern in the image
     bool patternfound =
-        cv::findChessboardCorners(gray, patternNum, corners, CALIB_CB_ADAPTIVE_THRESH + CALIB_CB_NORMALIZE_IMAGE);
+        findChessboardCorners(gray, patternNum, corners, cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_NORMALIZE_IMAGE);
 
     if (patternfound)
     {
@@ -267,9 +289,10 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
         // Mark the centre square corner points
         cv::fisheye::projectPoints(square_edge, imagePoints1, rvec, tvec, i_params.cameramat, i_params.distcoeff);
         cv::fisheye::projectPoints(boardcorners, imagePoints, rvec, tvec, i_params.cameramat, i_params.distcoeff);
-        for (int i = 0; i < grid3dpoint.size(); i++)
+        for (size_t i = 0; i < grid3dpoint.size(); i++)
+        {
           cv::circle(cv_ptr->image, image_points[i], 5, CV_RGB(255, 0, 0), -1);
-
+        }
         //        for (int i = 0; i < square_edge.size(); i++)
         //          cv::circle(cv_ptr->image, imagePoints1[i], 5, CV_RGB(255,0,0), -1);
         //        // Mark the board corner points and centre point
@@ -311,7 +334,7 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
       chessboard_normal.at<double>(2) = 1;
       chessboard_normal = chessboard_normal * chessboardpose(cv::Rect(0, 0, 3, 3)).t();
 
-      for (int k = 0; k < boardcorners.size(); k++)
+      for (size_t k = 0; k < boardcorners.size(); k++)
       {
         // take every point in boardcorners set
         cv::Point3f pt(boardcorners[k]);
@@ -323,7 +346,7 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
         }
 
         // convert 3D coordinates to image coordinates
-        double* img_coord = feature_extraction::converto_imgpts(
+        double* img_coord = FeatureExtractor::convertToImagePoints(
             corner_vectors.at<double>(0, k), corner_vectors.at<double>(1, k), corner_vectors.at<double>(2, k));
         // Mark the corners and the board centre
         if (k == 0)
@@ -373,12 +396,10 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
     // Filter out the board point cloud
     // find the point with max height(z val) in cloud_passthrough
     double z_max = cloud_passthrough->points[0].z;
-    size_t pt_index;
     for (size_t i = 0; i < cloud_passthrough->points.size(); ++i)
     {
       if (cloud_passthrough->points[i].z > z_max)
       {
-        pt_index = i;
         z_max = cloud_passthrough->points[i].z;
       }
     }
@@ -393,7 +414,6 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
     // Fit a plane through the board point cloud
     pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
     pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-    int i = 0, nr_points = static_cast<int>(cloud_filtered->points.size());
     pcl::SACSegmentation<pcl::PointXYZIR> seg;
     seg.setOptimizeCoefficients(true);
     seg.setModelType(pcl::SACMODEL_PLANE);
@@ -449,9 +469,9 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
       {
         continue;
       }
-      for (int j = 0; j < candidate_segments[i].size(); j++)
+      for (size_t j = 0; j < candidate_segments[i].size(); j++)
       {
-        for (int k = j + 1; k < candidate_segments[i].size(); k++)
+        for (size_t k = j + 1; k < candidate_segments[i].size(); k++)
         {
           // If there is a larger element found on right of the point, swap
           if (candidate_segments[i][j]->y < candidate_segments[i][k]->y)
@@ -691,7 +711,7 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
     minmax.scale.y = 0.02;
     minmax.scale.z = 0.02;
     minmax.color.a = 1.0;  // Don't forget to set the alpha!
-    int y_min_pts;
+    size_t y_min_pts = 0;
     for (y_min_pts = 0; y_min_pts < min_points->points.size(); y_min_pts++)
     {
       minmax.id = y_min_pts + 13;
@@ -703,7 +723,7 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
       minmax.color.g = 0.0;
       visPub.publish(minmax);
     }
-    for (int y_max_pts = 0; y_max_pts < max_points->points.size(); y_max_pts++)
+    for (size_t y_max_pts = 0; y_max_pts < max_points->points.size(); y_max_pts++)
     {
       minmax.id = y_min_pts + 13 + y_max_pts;
       minmax.pose.position.x = max_points->points[y_max_pts].x;
@@ -785,6 +805,6 @@ void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr& img,
     flag = 0;
   }
 
-}  // End of extractROI
+}  // End of extractRegionOfInterest
 
 }  // namespace extrinsic_calibration
