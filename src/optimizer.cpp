@@ -1,45 +1,26 @@
-// Optimization node
-#include <string>
-#include <iostream>
-#include <fstream>
-#include "ros/ros.h"
-#include "std_msgs/Int8.h"
-#include "std_msgs/String.h"
-#include <vector>
-#include <opencv/cv.hpp>
-#include <math.h>
-#include <Eigen/Dense>
-#include "cam_lidar_calibration/calibration_data.h"
-#include "point_xyzir.h"
-#include "openga.h"
-#include <tf/transform_broadcaster.h>
-#include <tf/transform_datatypes.h>
-#include <string.h>
-#include <utility>
-#include <ros/package.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/kdtree/flann.h>
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/point_types.h>
-#include <pcl_conversions/pcl_conversions.h>
+#include "cam_lidar_calibration/point_xyzir.h"
 #include <pcl/point_cloud.h>
-#include "pcl_ros/transforms.h"
-#include <tf2/convert.h>
-#include <Eigen/Geometry>
-#include <pcl/io/pcd_io.h>
-#include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
-#include <message_filters/synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/kdtree/impl/kdtree_flann.hpp>
+
+#include <opencv/cv.hpp>
+
+#include <ros/ros.h>
+
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl_ros/transforms.h>
+#include <ros/package.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <std_msgs/Int8.h>
+#include <tf/transform_datatypes.h>
 
-#define PI 3.141592653589793238463
+#include "cam_lidar_calibration/calibration_data.h"
+#include "cam_lidar_calibration/openga.h"
 
 int sample = 0;
 bool sensor_pair = 0;
@@ -183,8 +164,8 @@ typedef EA::Genetic<Rot_Trans, Rot_Trans_cost> GA_Type2;
 void init_genes2(Rot_Trans& p, const std::function<double(void)>& rnd01)
 {
   std::vector<double> pi_vals;
-  pi_vals.push_back(PI / 18);
-  pi_vals.push_back(-PI / 18);
+  pi_vals.push_back(M_PI / 18);
+  pi_vals.push_back(-M_PI / 18);
   int RandIndex = rand() % 2;
   p.e1 = eul_t.e1 + pi_vals.at(RandIndex) * rnd01();
   RandIndex = rand() % 2;
@@ -339,11 +320,11 @@ Rot_Trans mutate2(const Rot_Trans& X_base, const std::function<double(void)>& rn
     in_range = true;
     X_new = X_base;
     X_new.e1 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e1 >= (eul_t.e1 - PI / 18) && X_new.e1 < (eul_t.e1 + PI / 18));
+    in_range = in_range && (X_new.e1 >= (eul_t.e1 - M_PI / 18) && X_new.e1 < (eul_t.e1 + M_PI / 18));
     X_new.e2 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e2 >= (eul_t.e2 - PI / 18) && X_new.e2 < (eul_t.e2 + PI / 18));
+    in_range = in_range && (X_new.e2 >= (eul_t.e2 - M_PI / 18) && X_new.e2 < (eul_t.e2 + M_PI / 18));
     X_new.e3 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e3 >= (eul_t.e3 - PI / 18) && X_new.e3 < (eul_t.e3 + PI / 18));
+    in_range = in_range && (X_new.e3 >= (eul_t.e3 - M_PI / 18) && X_new.e3 < (eul_t.e3 + M_PI / 18));
 
     X_new.x += 0.2 * (rnd01() - rnd01()) * shrink_scale;
     in_range = in_range && (X_new.x >= (eul_t.x - 0.05) && X_new.x < (eul_t.x + 0.05));
@@ -398,8 +379,8 @@ void SO_report_generation2(int generation_number, const EA::GenerationType<Rot_T
 void init_genes(Rotation& p, const std::function<double(void)>& rnd01)
 {
   std::vector<double> pi_vals;
-  pi_vals.push_back(PI / 8);
-  pi_vals.push_back(-PI / 8);
+  pi_vals.push_back(M_PI / 8);
+  pi_vals.push_back(-M_PI / 8);
   int RandIndex = rand() % 2;
   p.e1 = eul.e1 + pi_vals.at(RandIndex) * rnd01();
   RandIndex = rand() % 2;
@@ -428,11 +409,11 @@ Rotation mutate(const Rotation& X_base, const std::function<double(void)>& rnd01
     in_range = true;
     X_new = X_base;
     X_new.e1 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e1 >= (eul.e1 - PI / 8) && X_new.e1 < (eul.e1 + PI / 8));
+    in_range = in_range && (X_new.e1 >= (eul.e1 - M_PI / 8) && X_new.e1 < (eul.e1 + M_PI / 8));
     X_new.e2 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e2 >= (eul.e2 - PI / 8) && X_new.e2 < (eul.e2 + PI / 8));
+    in_range = in_range && (X_new.e2 >= (eul.e2 - M_PI / 8) && X_new.e2 < (eul.e2 + M_PI / 8));
     X_new.e3 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e3 >= (eul.e3 - PI / 8) && X_new.e3 < (eul.e3 + PI / 8));
+    in_range = in_range && (X_new.e3 >= (eul.e3 - M_PI / 8) && X_new.e3 < (eul.e3 + M_PI / 8));
   } while (!in_range);
   return X_new;
 }

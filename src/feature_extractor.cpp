@@ -1,6 +1,6 @@
 #include <ros/package.h>
 
-#include "point_xyzir.h"
+#include "cam_lidar_calibration/point_xyzir.h"
 #include <pcl/point_cloud.h>
 #include <pcl/common/intersections.h>
 
@@ -19,7 +19,7 @@
 #include <pcl_ros/point_cloud.h>
 #include <sensor_msgs/image_encodings.h>
 
-#include "feature_extractor.h"
+#include "cam_lidar_calibration/feature_extractor.h"
 
 using cv::findChessboardCorners;
 using cv::Mat_;
