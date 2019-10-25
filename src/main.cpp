@@ -1,6 +1,5 @@
 #include "main.h"
 
-
 int main(int argc, char **argv) {
   //Initialize Node and handles
   ros::init(argc, argv, "feature_extraction");
@@ -14,13 +13,12 @@ int main(int argc, char **argv) {
 }
 
 
-
 namespace extrinsic_calibration
 {
 
 feature_extraction::feature_extraction() {}
 
-void feature_extraction::onInit() 
+void feature_extraction::onInit()
 {
   // Read input parameters from configuration file
   pkg_loc = ros::package::getPath("cam_lidar_calibration");
@@ -81,12 +79,12 @@ void feature_extraction::onInit()
   NODELET_INFO_STREAM("Camera Lidar Calibration");
 }
 
-void feature_extraction::flag_cb(const std_msgs::Int8::ConstPtr& msg) 
+void feature_extraction::flag_cb(const std_msgs::Int8::ConstPtr& msg)
 {
   flag = msg->data; // read flag published by input_sample node
 }
 
-void feature_extraction::bounds_callback(cam_lidar_calibration::boundsConfig &config, uint32_t level) 
+void feature_extraction::bounds_callback(cam_lidar_calibration::boundsConfig &config, uint32_t level)
 {
   // Read the values corresponding to the motion of slider bars in reconfigure gui
   bound = config;
@@ -95,7 +93,7 @@ void feature_extraction::bounds_callback(cam_lidar_calibration::boundsConfig &co
 
 // Convert 3D points w.r.t camera frame to 2D pixel points in image frame
 double * feature_extraction::converto_imgpts(double x, double y, double z)
-{  
+{
   double tmpxC = x/z;
   double tmpyC = y/z;
   cv::Point2d planepointsC;
@@ -135,8 +133,8 @@ double * feature_extraction::converto_imgpts(double x, double y, double z)
 }
 
 // Extract features of interest
-void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr &img, const sensor_msgs::PointCloud2::ConstPtr &pc) 
-{   
+void feature_extraction::extractROI(const sensor_msgs::Image::ConstPtr &img, const sensor_msgs::PointCloud2::ConstPtr &pc)
+{
   pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZIR>),
       cloud_filtered1(new pcl::PointCloud<pcl::PointXYZIR>),
       cloud_passthrough1(new pcl::PointCloud<pcl::PointXYZIR>);
