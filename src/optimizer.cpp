@@ -21,6 +21,7 @@
 
 #include "cam_lidar_calibration/calibration_data.h"
 #include "cam_lidar_calibration/openga.h"
+#include <cam_lidar_calibration/Sample.h>
 
 int sample = 0;
 bool sensor_pair = 0;
@@ -484,218 +485,158 @@ void get_samples(const cam_lidar_calibration::calibration_data::ConstPtr& data)
   calibrationdata.pixeldata.push_back(data->pixeldata);
 }
 
-void my_flag(const std_msgs::Int8::ConstPtr& msg)
+bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibration::Sample::Response& res)
 {
-  // runs if you press 'o'
-  if (msg->data == 2)
+  std::cout << "input samples collected" << std::endl;
+  calibrationdata.cameranormals_mat = cv::Mat(sample, 3, CV_64F);
+  calibrationdata.camerapoints_mat = cv::Mat(sample, 3, CV_64F);
+  calibrationdata.velodynepoints_mat = cv::Mat(sample, 3, CV_64F);
+  calibrationdata.velodynenormals_mat = cv::Mat(sample, 3, CV_64F);
+  calibrationdata.velodynecorners_mat = cv::Mat(sample, 3, CV_64F);
+  calibrationdata.pixeldata_mat = cv::Mat(1, sample, CV_64F);
+
+  // Insert vector elements into cv::Mat for easy matrix operation
+  for (int i = 0; i < sample; i++)
   {
-    std::cout << "input samples collected" << std::endl;
-    calibrationdata.cameranormals_mat = cv::Mat(sample, 3, CV_64F);
-    calibrationdata.camerapoints_mat = cv::Mat(sample, 3, CV_64F);
-    calibrationdata.velodynepoints_mat = cv::Mat(sample, 3, CV_64F);
-    calibrationdata.velodynenormals_mat = cv::Mat(sample, 3, CV_64F);
-    calibrationdata.velodynecorners_mat = cv::Mat(sample, 3, CV_64F);
-    calibrationdata.pixeldata_mat = cv::Mat(1, sample, CV_64F);
-
-    // Insert vector elements into cv::Mat for easy matrix operation
-    for (int i = 0; i < sample; i++)
+    for (int j = 0; j < 3; j++)
     {
-      for (int j = 0; j < 3; j++)
-      {
-        calibrationdata.camerapoints_mat.at<double>(i, j) = calibrationdata.camerapoints[i][j];
-        calibrationdata.cameranormals_mat.at<double>(i, j) = calibrationdata.cameranormals[i][j];
-        calibrationdata.velodynepoints_mat.at<double>(i, j) = calibrationdata.velodynepoints[i][j];
-        calibrationdata.velodynenormals_mat.at<double>(i, j) = calibrationdata.velodynenormals[i][j];
-        calibrationdata.velodynecorners_mat.at<double>(i, j) = calibrationdata.velodynecorners[i][j];
-      }
-      calibrationdata.pixeldata_mat.at<double>(i) = calibrationdata.pixeldata[i];
+      calibrationdata.camerapoints_mat.at<double>(i, j) = calibrationdata.camerapoints[i][j];
+      calibrationdata.cameranormals_mat.at<double>(i, j) = calibrationdata.cameranormals[i][j];
+      calibrationdata.velodynepoints_mat.at<double>(i, j) = calibrationdata.velodynepoints[i][j];
+      calibrationdata.velodynenormals_mat.at<double>(i, j) = calibrationdata.velodynenormals[i][j];
+      calibrationdata.velodynecorners_mat.at<double>(i, j) = calibrationdata.velodynecorners[i][j];
     }
+    calibrationdata.pixeldata_mat.at<double>(i) = calibrationdata.pixeldata[i];
+  }
 
-    cv::Mat NN = calibrationdata.cameranormals_mat.t() * calibrationdata.cameranormals_mat;
-    cv::Mat NM = calibrationdata.cameranormals_mat.t() * calibrationdata.velodynenormals_mat;
-    cv::Mat UNR = (NN.inv() * NM).t();  // Analytical rotation matrix for real data
-    std::cout << "Analytical rotation matrix " << UNR << std::endl;
-    std::vector<double> euler;
-    euler = rotm2eul(UNR);  // rpy wrt original axes
-    std::cout << "Analytical Euler angles " << euler.at(0) << " " << euler.at(1) << " " << euler.at(2) << " "
-              << std::endl;
-    eul.e1 = euler[0];
-    eul.e2 = euler[1];
-    eul.e3 = euler[2];
+  cv::Mat NN = calibrationdata.cameranormals_mat.t() * calibrationdata.cameranormals_mat;
+  cv::Mat NM = calibrationdata.cameranormals_mat.t() * calibrationdata.velodynenormals_mat;
+  cv::Mat UNR = (NN.inv() * NM).t();  // Analytical rotation matrix for real data
+  std::cout << "Analytical rotation matrix " << UNR << std::endl;
+  std::vector<double> euler;
+  euler = rotm2eul(UNR);  // rpy wrt original axes
+  std::cout << "Analytical Euler angles " << euler.at(0) << " " << euler.at(1) << " " << euler.at(2) << " "
+            << std::endl;
+  eul.e1 = euler[0];
+  eul.e2 = euler[1];
+  eul.e3 = euler[2];
 
-    EA::Chronometer timer;
-    timer.tic();
+  EA::Chronometer timer;
+  timer.tic();
 
-    // Optimization for rotation alone
-    GA_Type ga_obj;
-    ga_obj.problem_mode = EA::GA_MODE::SOGA;
-    ga_obj.multi_threading = false;
-    ga_obj.verbose = false;
-    ga_obj.population = 200;
-    ga_obj.generation_max = 1000;
-    ga_obj.calculate_SO_total_fitness = calculate_SO_total_fitness;
-    ga_obj.init_genes = init_genes;
-    ga_obj.eval_solution = eval_solution;
-    ga_obj.mutate = mutate;
-    ga_obj.crossover = crossover;
-    ga_obj.SO_report_generation = SO_report_generation;
-    ga_obj.best_stall_max = 100;
-    ga_obj.average_stall_max = 100;
-    ga_obj.tol_stall_average = 1e-8;
-    ga_obj.tol_stall_best = 1e-8;
-    ga_obj.elite_count = 10;
-    ga_obj.crossover_fraction = 0.8;
-    ga_obj.mutation_rate = 0.2;
-    ga_obj.best_stall_max = 10;
-    ga_obj.elite_count = 10;
-    ga_obj.solve();
+  // Optimization for rotation alone
+  GA_Type ga_obj;
+  ga_obj.problem_mode = EA::GA_MODE::SOGA;
+  ga_obj.multi_threading = false;
+  ga_obj.verbose = false;
+  ga_obj.population = 200;
+  ga_obj.generation_max = 1000;
+  ga_obj.calculate_SO_total_fitness = calculate_SO_total_fitness;
+  ga_obj.init_genes = init_genes;
+  ga_obj.eval_solution = eval_solution;
+  ga_obj.mutate = mutate;
+  ga_obj.crossover = crossover;
+  ga_obj.SO_report_generation = SO_report_generation;
+  ga_obj.best_stall_max = 100;
+  ga_obj.average_stall_max = 100;
+  ga_obj.tol_stall_average = 1e-8;
+  ga_obj.tol_stall_best = 1e-8;
+  ga_obj.elite_count = 10;
+  ga_obj.crossover_fraction = 0.8;
+  ga_obj.mutation_rate = 0.2;
+  ga_obj.best_stall_max = 10;
+  ga_obj.elite_count = 10;
+  ga_obj.solve();
 
-    // Optimized rotation
-    tf::Matrix3x3 rot;
-    rot.setRPY(eul_t.e1, eul_t.e2, eul_t.e3);
-    cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
-                       rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
-    // Analytical Translation
-    cv::Mat cp_trans = tmp_rot * calibrationdata.camerapoints_mat.t();
-    cv::Mat trans_diff = calibrationdata.velodynepoints_mat.t() - cp_trans;
-    cv::Mat summed_diff;
-    cv::reduce(trans_diff, summed_diff, 1, CV_REDUCE_SUM, CV_64F);
-    summed_diff = summed_diff / trans_diff.cols;
-    eul_t.x = summed_diff.at<double>(0);
-    eul_t.y = summed_diff.at<double>(1);
-    eul_t.z = summed_diff.at<double>(2);
-    std::cout << "Rotation and Translation after first optimization " << eul_t.e1 << " " << eul_t.e2 << " " << eul_t.e3
-              << " " << eul_t.x << " " << eul_t.y << " " << eul_t.z << std::endl;
+  // Optimized rotation
+  tf::Matrix3x3 rot;
+  rot.setRPY(eul_t.e1, eul_t.e2, eul_t.e3);
+  cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
+                     rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
+  // Analytical Translation
+  cv::Mat cp_trans = tmp_rot * calibrationdata.camerapoints_mat.t();
+  cv::Mat trans_diff = calibrationdata.velodynepoints_mat.t() - cp_trans;
+  cv::Mat summed_diff;
+  cv::reduce(trans_diff, summed_diff, 1, CV_REDUCE_SUM, CV_64F);
+  summed_diff = summed_diff / trans_diff.cols;
+  eul_t.x = summed_diff.at<double>(0);
+  eul_t.y = summed_diff.at<double>(1);
+  eul_t.z = summed_diff.at<double>(2);
+  std::cout << "Rotation and Translation after first optimization " << eul_t.e1 << " " << eul_t.e2 << " " << eul_t.e3
+            << " " << eul_t.x << " " << eul_t.y << " " << eul_t.z << std::endl;
 
-    // extrinsics stored the vector of extrinsic parameters in every iteration
-    std::vector<std::vector<double>> extrinsics;
-    for (int i = 0; i < 10; i++)
-    {
-      // Joint optimization for Rotation and Translation (Perform this 10 times and take the average of the extrinsics)
-      GA_Type2 ga_obj2;
-      ga_obj2.problem_mode = EA::GA_MODE::SOGA;
-      ga_obj2.multi_threading = false;
-      ga_obj2.verbose = false;
-      ga_obj2.population = 200;
-      ga_obj2.generation_max = 1000;
-      ga_obj2.calculate_SO_total_fitness = calculate_SO_total_fitness2;
-      ga_obj2.init_genes = init_genes2;
-      ga_obj2.eval_solution = eval_solution2;
-      ga_obj2.mutate = mutate2;
-      ga_obj2.crossover = crossover2;
-      ga_obj2.SO_report_generation = SO_report_generation2;
-      ga_obj2.best_stall_max = 100;
-      ga_obj2.average_stall_max = 100;
-      ga_obj2.tol_stall_average = 1e-8;
-      ga_obj2.tol_stall_best = 1e-8;
-      ga_obj2.elite_count = 10;
-      ga_obj2.crossover_fraction = 0.8;
-      ga_obj2.mutation_rate = 0.2;
-      ga_obj2.best_stall_max = 10;
-      ga_obj2.elite_count = 10;
-      ga_obj2.solve();
-      std::vector<double> ex_it;
-      ex_it.push_back(eul_it.e1);
-      ex_it.push_back(eul_it.e2);
-      ex_it.push_back(eul_it.e3);
-      ex_it.push_back(eul_it.x);
-      ex_it.push_back(eul_it.y);
-      ex_it.push_back(eul_it.z);
-      extrinsics.push_back(ex_it);
-      //      std::cout << "Extrinsics for iteration" << i << " " << extrinsics[i][0] << " " << extrinsics[i][1] << " "
-      //      << extrinsics[i][2]
-      //                << " " << extrinsics[i][3] << " " << extrinsics[i][4] << " " << extrinsics[i][5] << std::endl;
-    }
-    // Perform the average operation
-    double e_x = 0.0;
-    double e_y = 0.0;
-    double e_z = 0.0;
-    double e_e1 = 0.0;
-    double e_e2 = 0.0;
-    double e_e3 = 0.0;
-    for (int i = 0; i < 10; i++)
-    {
-      e_e1 += extrinsics[i][0];
-      e_e2 += extrinsics[i][1];
-      e_e3 += extrinsics[i][2];
-      e_x += extrinsics[i][3];
-      e_y += extrinsics[i][4];
-      e_z += extrinsics[i][5];
-    }
+  // extrinsics stored the vector of extrinsic parameters in every iteration
+  std::vector<std::vector<double>> extrinsics;
+  for (int i = 0; i < 10; i++)
+  {
+    // Joint optimization for Rotation and Translation (Perform this 10 times and take the average of the extrinsics)
+    GA_Type2 ga_obj2;
+    ga_obj2.problem_mode = EA::GA_MODE::SOGA;
+    ga_obj2.multi_threading = false;
+    ga_obj2.verbose = false;
+    ga_obj2.population = 200;
+    ga_obj2.generation_max = 1000;
+    ga_obj2.calculate_SO_total_fitness = calculate_SO_total_fitness2;
+    ga_obj2.init_genes = init_genes2;
+    ga_obj2.eval_solution = eval_solution2;
+    ga_obj2.mutate = mutate2;
+    ga_obj2.crossover = crossover2;
+    ga_obj2.SO_report_generation = SO_report_generation2;
+    ga_obj2.best_stall_max = 100;
+    ga_obj2.average_stall_max = 100;
+    ga_obj2.tol_stall_average = 1e-8;
+    ga_obj2.tol_stall_best = 1e-8;
+    ga_obj2.elite_count = 10;
+    ga_obj2.crossover_fraction = 0.8;
+    ga_obj2.mutation_rate = 0.2;
+    ga_obj2.best_stall_max = 10;
+    ga_obj2.elite_count = 10;
+    ga_obj2.solve();
+    std::vector<double> ex_it;
+    ex_it.push_back(eul_it.e1);
+    ex_it.push_back(eul_it.e2);
+    ex_it.push_back(eul_it.e3);
+    ex_it.push_back(eul_it.x);
+    ex_it.push_back(eul_it.y);
+    ex_it.push_back(eul_it.z);
+    extrinsics.push_back(ex_it);
+    //      std::cout << "Extrinsics for iteration" << i << " " << extrinsics[i][0] << " " << extrinsics[i][1] << " "
+    //      << extrinsics[i][2]
+    //                << " " << extrinsics[i][3] << " " << extrinsics[i][4] << " " << extrinsics[i][5] << std::endl;
+  }
+  // Perform the average operation
+  double e_x = 0.0;
+  double e_y = 0.0;
+  double e_z = 0.0;
+  double e_e1 = 0.0;
+  double e_e2 = 0.0;
+  double e_e3 = 0.0;
+  for (int i = 0; i < 10; i++)
+  {
+    e_e1 += extrinsics[i][0];
+    e_e2 += extrinsics[i][1];
+    e_e3 += extrinsics[i][2];
+    e_x += extrinsics[i][3];
+    e_y += extrinsics[i][4];
+    e_z += extrinsics[i][5];
+  }
 
-    Rot_Trans rot_trans;
-    rot_trans.e1 = e_e1 / 10;
-    rot_trans.e2 = e_e2 / 10;
-    rot_trans.e3 = e_e3 / 10;
-    rot_trans.x = e_x / 10;
-    rot_trans.y = e_y / 10;
-    rot_trans.z = e_z / 10;
-    std::cout << "Extrinsic Parameters "
-              << " " << rot_trans.e1 << " " << rot_trans.e2 << " " << rot_trans.e3 << " " << rot_trans.x << " "
-              << rot_trans.y << " " << rot_trans.z << std::endl;
-    std::cout << "The problem is optimized in " << timer.toc() << " seconds." << std::endl;
+  Rot_Trans rot_trans;
+  rot_trans.e1 = e_e1 / 10;
+  rot_trans.e2 = e_e2 / 10;
+  rot_trans.e3 = e_e3 / 10;
+  rot_trans.x = e_x / 10;
+  rot_trans.y = e_y / 10;
+  rot_trans.z = e_z / 10;
+  std::cout << "Extrinsic Parameters "
+            << " " << rot_trans.e1 << " " << rot_trans.e2 << " " << rot_trans.e3 << " " << rot_trans.x << " "
+            << rot_trans.y << " " << rot_trans.z << std::endl;
+  std::cout << "The problem is optimized in " << timer.toc() << " seconds." << std::endl;
 
-    image_projection(rot_trans);  // Project the pointcloud on the image with the obtained extrinsics
-  }                               // runs if you press 'o'
+  image_projection(rot_trans);  // Project the pointcloud on the image with the obtained extrinsics
+  return true;
 }
 
-int main(int argc, char** argv)
-{
-  ROS_INFO("optimizer");
-  ros::init(argc, argv, "optimizer");
-  ros::NodeHandle n;
-
-  int cb_l, cb_b, l, b, e_l, e_b, i_l, i_b;
-  std::string pkg_loc = ros::package::getPath("cam_lidar_calibration");
-  std::ifstream infile(pkg_loc + "/cfg/initial_params.txt");
-
-  infile >> i_params.camera_topic;
-  infile >> i_params.lidar_topic;
-  infile >> i_params.fisheye_model;
-  infile >> i_params.lidar_ring_count;
-  infile >> cb_l;
-  infile >> cb_b;
-  i_params.grid_size = std::make_pair(cb_l, cb_b);
-  infile >> i_params.square_length;
-  infile >> l;
-  infile >> b;
-  i_params.board_dimension = std::make_pair(l, b);
-  infile >> e_l;
-  infile >> e_b;
-  i_params.cb_translation_error = std::make_pair(e_l, e_b);
-  double camera_mat[9];
-  for (int i = 0; i < 9; i++)
-  {
-    infile >> camera_mat[i];
-  }
-  cv::Mat(3, 3, CV_64F, &camera_mat).copyTo(i_params.cameramat);
-
-  infile >> i_params.distcoeff_num;
-  double dist_coeff[i_params.distcoeff_num];
-  for (int i = 0; i < i_params.distcoeff_num; i++)
-  {
-    infile >> dist_coeff[i];
-  }
-  cv::Mat(1, i_params.distcoeff_num, CV_64F, &dist_coeff).copyTo(i_params.distcoeff);
-  infile >> i_l;
-  infile >> i_b;
-  i_params.image_size = std::make_pair(i_l, i_b);
-
-  ros::Subscriber flag_sub = n.subscribe("/flag", 5, my_flag);
-  ros::Subscriber calibdata_sub = n.subscribe("/extrinsic_calibration_feature_extraction/roi/points", 5, get_samples);
-
-  message_filters::Subscriber<sensor_msgs::Image> image_sub(n, i_params.camera_topic, 5);
-  message_filters::Subscriber<sensor_msgs::PointCloud2> pcl_sub(n, i_params.lidar_topic, 5);
-  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::PointCloud2> MySyncPolicy;
-  message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(5), image_sub, pcl_sub);
-  sync.registerCallback(boost::bind(&sensor_info_callback, _1, _2));
-
-  image_transport::ImageTransport it(n);
-  pub_img_dist = it.advertise("image_projection", 20);
-
-  ros::spin();
-  return 0;
-}
 // Function converts rotation matrix to corresponding euler angles
 std::vector<double> rotm2eul(cv::Mat mat)
 {
@@ -856,3 +797,63 @@ pcl::PointCloud<pcl::PointXYZIR> organized_pointcloud(pcl::PointCloud<pcl::Point
   // Return sorted point cloud
   return (organized_pc);
 }
+
+int main(int argc, char** argv)
+{
+  ROS_INFO("optimizer");
+  ros::init(argc, argv, "optimizer");
+  ros::NodeHandle n;
+
+  int cb_l, cb_b, l, b, e_l, e_b, i_l, i_b;
+  std::string pkg_loc = ros::package::getPath("cam_lidar_calibration");
+  std::ifstream infile(pkg_loc + "/cfg/initial_params.txt");
+
+  infile >> i_params.camera_topic;
+  infile >> i_params.lidar_topic;
+  infile >> i_params.fisheye_model;
+  infile >> i_params.lidar_ring_count;
+  infile >> cb_l;
+  infile >> cb_b;
+  i_params.grid_size = std::make_pair(cb_l, cb_b);
+  infile >> i_params.square_length;
+  infile >> l;
+  infile >> b;
+  i_params.board_dimension = std::make_pair(l, b);
+  infile >> e_l;
+  infile >> e_b;
+  i_params.cb_translation_error = std::make_pair(e_l, e_b);
+  double camera_mat[9];
+  for (int i = 0; i < 9; i++)
+  {
+    infile >> camera_mat[i];
+  }
+  cv::Mat(3, 3, CV_64F, &camera_mat).copyTo(i_params.cameramat);
+
+  infile >> i_params.distcoeff_num;
+  double dist_coeff[i_params.distcoeff_num];
+  for (int i = 0; i < i_params.distcoeff_num; i++)
+  {
+    infile >> dist_coeff[i];
+  }
+  cv::Mat(1, i_params.distcoeff_num, CV_64F, &dist_coeff).copyTo(i_params.distcoeff);
+  infile >> i_l;
+  infile >> i_b;
+  i_params.image_size = std::make_pair(i_l, i_b);
+
+  ros::ServiceServer optimise_service = n.advertiseService("optimise", optimiseCB);
+  // ros::Subscriber flag_sub = n.subscribe("/flag", 5, my_flag);
+  ros::Subscriber calibdata_sub = n.subscribe("/extrinsic_calibration_feature_extraction/roi/points", 5, get_samples);
+
+  message_filters::Subscriber<sensor_msgs::Image> image_sub(n, i_params.camera_topic, 5);
+  message_filters::Subscriber<sensor_msgs::PointCloud2> pcl_sub(n, i_params.lidar_topic, 5);
+  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::PointCloud2> MySyncPolicy;
+  message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(5), image_sub, pcl_sub);
+  sync.registerCallback(boost::bind(&sensor_info_callback, _1, _2));
+
+  image_transport::ImageTransport it(n);
+  pub_img_dist = it.advertise("image_projection", 20);
+
+  ros::spin();
+  return 0;
+}
+

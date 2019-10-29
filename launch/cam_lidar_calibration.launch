@@ -10,8 +10,10 @@
   <node pkg="cam_lidar_calibration" type="feature_extraction" name="feature_extraction" output="screen">
   </node>
 
+<!--
   <node pkg="cam_lidar_calibration" type="input_sample" name="input_sample" output="screen">
   </node>
+-->
 
   <node pkg="cam_lidar_calibration" type="optimizer" name="optimizer" output="screen">
   </node>

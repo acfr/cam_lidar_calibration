@@ -1,0 +1,7 @@
+int8 operation
+
+int8 CAPTURE=1
+int8 OPTIMISE=2
+int8 DISCARD=3
+int8 USE=4
+---

@@ -32,14 +32,14 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "FeatureExtractor");
   ros::NodeHandle n;
 
-  extrinsic_calibration::FeatureExtractor FeatureExtractor;
+  cam_lidar_calibration::FeatureExtractor FeatureExtractor;
   FeatureExtractor.bypassInit();
   ros::spin();
 
   return 0;
 }
 
-namespace extrinsic_calibration
+namespace cam_lidar_calibration
 {
 void FeatureExtractor::onInit()
 {
@@ -101,16 +101,27 @@ void FeatureExtractor::onInit()
   roi_publisher = public_nh.advertise<cam_lidar_calibration::calibration_data>("roi/points", 10, true);
   pub_cloud = public_nh.advertise<sensor_msgs::PointCloud2>("velodyne_features", 1);
   expt_region = public_nh.advertise<sensor_msgs::PointCloud2>("Experimental_region", 10);
-  flag_subscriber = public_nh.subscribe<std_msgs::Int8>("/flag", 1, &FeatureExtractor::flagCB, this);
+  sample_service_ = public_nh.advertiseService("sample", &FeatureExtractor::sampleCB, this);
   vis_pub = public_nh.advertise<visualization_msgs::Marker>("visualization_marker", 0);
   visPub = public_nh.advertise<visualization_msgs::Marker>("boardcorners", 0);
   image_publisher = it_p_->advertise("camera_features", 1);
   NODELET_INFO_STREAM("Camera Lidar Calibration");
 }
 
-void FeatureExtractor::flagCB(const std_msgs::Int8::ConstPtr& msg)
+bool FeatureExtractor::sampleCB(Sample::Request& req, Sample::Response& res)
 {
-  flag = msg->data;  // read flag published by input_sample node
+  switch (req.operation)
+  {
+    case Sample::Request::CAPTURE:
+      ROS_INFO("Capturing sample");
+      break;
+    case Sample::Request::DISCARD:
+      ROS_INFO("Discarding last sample");
+      break;
+  }
+
+  flag = req.operation;  // read flag published by rviz calibration panel
+  return true;
 }
 
 void FeatureExtractor::boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level)
@@ -194,7 +205,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
   expt_region.publish(cloud_final1);
 
   // Runs only if user presses 'i' to get a sample
-  if (flag == 1)
+  if (flag == Sample::Request::CAPTURE)
   {
     cv::Mat corner_vectors = cv::Mat::eye(3, 5, CV_64F);
     cv::Mat chessboard_normal = cv::Mat(1, 3, CV_64F);
@@ -796,10 +807,10 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     // Publish Board normal
     vis_pub.publish(marker);
 
-  }  // if (flag == 1)
+  }  // if (flag == Sample::Request::CAPTURE)
 
   // Feature data is published(chosen) only if 'enter' is pressed
-  if (flag == 4)
+  if (flag == Sample::Request::USE)
   {
     roi_publisher.publish(sample_data);
     flag = 0;
@@ -807,4 +818,4 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
 }  // End of extractRegionOfInterest
 
-}  // namespace extrinsic_calibration
+}  // namespace cam_lidar_calibration

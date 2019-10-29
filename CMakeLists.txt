@@ -1,25 +1,28 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(cam_lidar_calibration)
-#list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
-find_package(catkin REQUIRED COMPONENTS nodelet
-  roscpp
-  std_msgs
+find_package(catkin REQUIRED COMPONENTS
+  cmake_modules
+  cv_bridge
+  dynamic_reconfigure
+  image_transport
+  message_generation
+  nodelet
   pcl_conversions
   pcl_ros
-  image_transport
-  cv_bridge
+  roscpp
+  rviz
   sensor_msgs
-  message_generation
-  cmake_modules
-  dynamic_reconfigure
+  std_msgs
   )
 
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(Eigen3 REQUIRED)
+find_package(Qt5 REQUIRED Core Widgets)
+
 ## Setup include directories
 include_directories(
   include
@@ -27,10 +30,20 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${Eigen_INCLUDE_DIRS}
   )
+#link_directories(${catkin_LIBRARY_DIRS})
+
+add_definitions(-DQT_NO_KEYWORDS)
+
+set(CMAKE_AUTOMOC ON)
+
 add_message_files(
   FILES
   calibration_data.msg
   extrinsics.msg
+  )
+add_service_files(
+  FILES
+  Sample.srv
   )
 generate_messages(
   DEPENDENCIES
@@ -48,30 +61,28 @@ catkin_package(
   message_runtime
   )
 
-add_executable(input_sample src/input_sample.cpp)
-target_link_libraries(input_sample ${catkin_LIBRARIES})
-
 add_executable(optimizer src/optimizer.cpp)
 target_link_libraries(optimizer ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
-add_dependencies(optimizer cam_lidar_calibration_generate_messages_cpp)
 
-## Create the nodelet tutorial library
-add_executable(feature_extraction src/feature_extractor.cpp)
-add_dependencies(feature_extraction ${PROJECT_NAME}_gencfg)
+add_executable(feature_extraction
+  src/feature_extractor.cpp
+  )
 
 target_link_libraries(feature_extraction ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
-if(catkin_EXPORTED_LIBRARIES)
-  add_dependencies(feature_extraction ${catkin_EXPORTED_LIBRARIES})
-endif()
+
+add_library(cam_lidar_calibration
+  src/cam_lidar_panel.cpp)
+target_link_libraries(cam_lidar_calibration Qt5::Widgets ${catkin_LIBRARIES})
+
 
 ## Mark the nodelet library for installations
-install(TARGETS feature_extraction optimizer input_sample
+install(TARGETS feature_extraction optimizer cam_lidar_calibration
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
-install(FILES nodelet_definition.xml
+install(FILES nodelet_definition.xml plugin_description.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 
 install(DIRECTORY include/${PROJECT_NAME}/

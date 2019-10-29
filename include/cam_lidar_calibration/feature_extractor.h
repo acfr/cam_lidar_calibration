@@ -13,13 +13,15 @@
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/persistence.hpp>
 
+#include <cam_lidar_calibration/Sample.h>
+
 #include <cam_lidar_calibration/boundsConfig.h>
 #include "cam_lidar_calibration/calibration_data.h"
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
 typedef message_filters::Subscriber<sensor_msgs::PointCloud2> pc_sub_type;
 
-namespace extrinsic_calibration
+namespace cam_lidar_calibration
 {
 class FeatureExtractor : public nodelet::Nodelet
 {
@@ -28,8 +30,8 @@ public:
   ~FeatureExtractor() = default;
 
   void extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc);
-  void flagCB(const std_msgs::Int8::ConstPtr& msg);
-  void boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level);
+  bool sampleCB(Sample::Request& req, Sample::Response& res);
+  void boundsCB(boundsConfig& config, uint32_t level);
   double* convertToImagePoints(double x, double y, double z);
 
   void bypassInit()
@@ -72,7 +74,7 @@ private:
   ros::Publisher pub_cloud, expt_region;
   ros::Publisher vis_pub, visPub;
   image_transport::Publisher image_publisher;
-  ros::Subscriber flag_subscriber;
+  ros::ServiceServer sample_service_;
   message_filters::Subscriber<sensor_msgs::Image>* image_sub;
   message_filters::Subscriber<sensor_msgs::PointCloud2>* pcl_sub;
   visualization_msgs::Marker marker;
@@ -82,4 +84,4 @@ private:
 };
 
 // PLUGINLIB_EXPORT_CLASS(extrinsic_calibration::FeatureExtractor, nodelet::Nodelet);
-}  // namespace extrinsic_calibration
+}  // namespace cam_lidar_calibration
