@@ -207,11 +207,11 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
   // Runs only if user presses 'i' to get a sample
   if (flag == Sample::Request::CAPTURE)
   {
+    ROS_INFO("Processing sample");
     cv::Mat corner_vectors = cv::Mat::eye(3, 5, CV_64F);
     cv::Mat chessboard_normal = cv::Mat(1, 3, CV_64F);
     // checkerboard corners, middle square corners, board corners and centre
     std::vector<cv::Point2f> image_points, imagePoints1, imagePoints;
-    flag = 0;  // Set flag to 0
 
     //////////////// IMAGE FEATURES //////////////////
 
@@ -238,6 +238,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
     if (patternfound)
     {
+      ROS_INFO("Checkerboard found");
       // Find corner points with sub-pixel accuracy
       cornerSubPix(gray, corners, Size(11, 11), Size(-1, -1),
                    TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
@@ -807,14 +808,10 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     // Publish Board normal
     vis_pub.publish(marker);
 
-  }  // if (flag == Sample::Request::CAPTURE)
-
-  // Feature data is published(chosen) only if 'enter' is pressed
-  if (flag == Sample::Request::USE)
-  {
+    // Feature data is published(chosen) only if 'enter' is pressed
     roi_publisher.publish(sample_data);
     flag = 0;
-  }
+  }  // if (flag == Sample::Request::CAPTURE)
 
 }  // End of extractRegionOfInterest
 

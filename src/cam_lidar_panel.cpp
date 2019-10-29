@@ -30,9 +30,6 @@ void CamLidarPanel::captureSample()
   Sample srv;
   srv.request.operation = Sample::Request::CAPTURE;
   sample_client_.call(srv);
-  // TODO remove this when we can drop images
-  srv.request.operation = Sample::Request::USE;
-  sample_client_.call(srv);
 }
 
 void CamLidarPanel::discardSample()
