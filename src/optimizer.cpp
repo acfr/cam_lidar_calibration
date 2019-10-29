@@ -841,8 +841,7 @@ int main(int argc, char** argv)
   i_params.image_size = std::make_pair(i_l, i_b);
 
   ros::ServiceServer optimise_service = n.advertiseService("optimise", optimiseCB);
-  // ros::Subscriber flag_sub = n.subscribe("/flag", 5, my_flag);
-  ros::Subscriber calibdata_sub = n.subscribe("/extrinsic_calibration_feature_extraction/roi/points", 5, get_samples);
+  ros::Subscriber calibdata_sub = n.subscribe("roi/points", 5, get_samples);
 
   message_filters::Subscriber<sensor_msgs::Image> image_sub(n, i_params.camera_topic, 5);
   message_filters::Subscriber<sensor_msgs::PointCloud2> pcl_sub(n, i_params.lidar_topic, 5);
