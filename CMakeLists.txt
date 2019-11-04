@@ -61,14 +61,17 @@ catkin_package(
   message_runtime
   )
 
+add_library(load_params src/load_params.cpp)
+target_link_libraries(load_params ${catkin_LIBRARIES} ${OpenCV_LIBS})
+
 add_executable(optimizer src/optimizer.cpp)
-target_link_libraries(optimizer ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
+target_link_libraries(optimizer load_params ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
 
 add_executable(feature_extraction
-  src/feature_extractor.cpp
-  )
+src/feature_extractor.cpp
+)
 
-target_link_libraries(feature_extraction ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
+target_link_libraries(feature_extraction load_params ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
 
 add_library(cam_lidar_calibration
   src/cam_lidar_panel.cpp)
@@ -76,7 +79,11 @@ target_link_libraries(cam_lidar_calibration Qt5::Widgets ${catkin_LIBRARIES})
 
 
 ## Mark the nodelet library for installations
-install(TARGETS feature_extraction optimizer cam_lidar_calibration
+install(TARGETS
+  load_params
+  feature_extraction
+  optimizer
+  cam_lidar_calibration
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

@@ -1,4 +1,4 @@
-#include <ros/package.h>
+#include <ros/ros.h>
 
 #include "cam_lidar_calibration/point_xyzir.h"
 #include <pcl/point_cloud.h>
@@ -43,45 +43,12 @@ namespace cam_lidar_calibration
 {
 void FeatureExtractor::onInit()
 {
-  // Read input parameters from configuration file
-  pkg_loc = ros::package::getPath("cam_lidar_calibration");
-  std::ifstream infile(pkg_loc + "/cfg/initial_params.txt");
-
-  infile >> i_params.camera_topic;
-  infile >> i_params.lidar_topic;
-  infile >> i_params.fisheye_model;
-  infile >> i_params.lidar_ring_count;
-  infile >> cb_l;
-  infile >> cb_b;
-  i_params.grid_size = std::make_pair(cb_l, cb_b);
-  infile >> i_params.square_length;
-  infile >> l;
-  infile >> b;
-  i_params.board_dimension = std::make_pair(l, b);
-  infile >> e_l;
-  infile >> e_b;
-  i_params.cb_translation_error = std::make_pair(e_l, e_b);
-  double camera_mat[9];
-  for (int i = 0; i < 9; i++)
-  {
-    infile >> camera_mat[i];
-  }
-  cv::Mat(3, 3, CV_64F, &camera_mat).copyTo(i_params.cameramat);
-  infile >> i_params.distcoeff_num;
-  double dist_coeff[i_params.distcoeff_num];
-  for (int i = 0; i < i_params.distcoeff_num; i++)
-  {
-    infile >> dist_coeff[i];
-  }
-  cv::Mat(1, i_params.distcoeff_num, CV_64F, &dist_coeff).copyTo(i_params.distcoeff);
-  diagonal = sqrt(pow(i_params.board_dimension.first, 2) + pow(i_params.board_dimension.second, 2)) / 1000;
-
-  std::cout << "Input parameters received" << std::endl;
-
   // Creating ROS nodehandle
   ros::NodeHandle private_nh = ros::NodeHandle("~");
   ros::NodeHandle public_nh = ros::NodeHandle();
   ros::NodeHandle pnh = ros::NodeHandle("~");  // getMTPrivateNodeHandle();
+  loadParams(public_nh, i_params);
+  ROS_INFO("Input parameters loaded");
 
   it_.reset(new image_transport::ImageTransport(public_nh));
   it_p_.reset(new image_transport::ImageTransport(private_nh));
@@ -812,7 +779,6 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     roi_publisher.publish(sample_data);
     flag = 0;
   }  // if (flag == Sample::Request::CAPTURE)
-
 }  // End of extractRegionOfInterest
 
 }  // namespace cam_lidar_calibration

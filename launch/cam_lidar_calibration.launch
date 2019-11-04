@@ -7,6 +7,8 @@
   </node>
 -->
 
+  <rosparam file="$(find cam_lidar_calibration)/cfg/params.yaml" />
+
   <node pkg="cam_lidar_calibration" type="feature_extraction" name="feature_extraction" output="screen">
   </node>
 

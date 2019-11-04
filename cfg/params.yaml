@@ -1,0 +1,21 @@
+image_topic: /gmsl/A2/image_color
+lidar_topic: /velodyne/front/points
+fisheye_model: 1
+lidar_ring_count: 16
+grid_size:
+  l: 8
+  b: 6
+square_length: 65
+board_dimension:
+  l: 905
+  b: 600
+cb_translation_error:
+  l: 20
+  b: 0
+cameramat: [1178.654264230649, 0.0, 960.769818463969, 0.0, 1182.0760126922614, 603.9601849872713, 0.0, 0.0, 1.0]
+distcoeff_num: 4
+distcoeff: [-0.09405418270319424, 0.08610743090764036, -0.17081566190501285, 0.09818990340541457]
+image_size:
+  l: 1920
+  b: 1208
+

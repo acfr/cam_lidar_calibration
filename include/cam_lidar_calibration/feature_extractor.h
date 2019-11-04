@@ -17,6 +17,7 @@
 
 #include <cam_lidar_calibration/boundsConfig.h>
 #include "cam_lidar_calibration/calibration_data.h"
+#include "cam_lidar_calibration/load_params.h"
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
 typedef message_filters::Subscriber<sensor_msgs::PointCloud2> pc_sub_type;
@@ -42,21 +43,7 @@ public:
 private:
   virtual void onInit();
 
-  struct initial_parameters
-  {
-    std::string camera_topic;
-    std::string lidar_topic;
-    bool fisheye_model;
-    int lidar_ring_count;
-    std::pair<int, int> grid_size;
-    int square_length;                         // in millimetres
-    std::pair<int, int> board_dimension;       // in millimetres
-    std::pair<int, int> cb_translation_error;  // in millimetres
-    cv::Mat cameramat;
-    int distcoeff_num;
-    cv::Mat distcoeff;
-  } i_params;
-
+  initial_parameters_t i_params;
   std::string pkg_loc;
   int cb_l, cb_b, l, b, e_l, e_b;
   double diagonal;

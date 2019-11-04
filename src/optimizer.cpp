@@ -14,12 +14,12 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/transforms.h>
-#include <ros/package.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <std_msgs/Int8.h>
 #include <tf/transform_datatypes.h>
 
 #include "cam_lidar_calibration/calibration_data.h"
+#include "cam_lidar_calibration/load_params.h"
 #include "cam_lidar_calibration/openga.h"
 #include <cam_lidar_calibration/Sample.h>
 
@@ -105,21 +105,7 @@ struct CameraVelodyneCalibrationData
 
 } calibrationdata;
 
-struct initial_parameters
-{
-  std::string camera_topic;
-  std::string lidar_topic;
-  bool fisheye_model;
-  int lidar_ring_count;
-  std::pair<int, int> grid_size;
-  int square_length;                         // in millimetres
-  std::pair<int, int> board_dimension;       // in millimetres
-  std::pair<int, int> cb_translation_error;  // in millimetres
-  cv::Mat cameramat;
-  int distcoeff_num;
-  cv::Mat distcoeff;
-  std::pair<int, int> image_size;
-} i_params;
+cam_lidar_calibration::initial_parameters_t i_params;
 
 struct Rotation
 {
@@ -461,7 +447,7 @@ void SO_report_generation(int generation_number, const EA::GenerationType<Rotati
 void get_samples(const cam_lidar_calibration::calibration_data::ConstPtr& data)
 {
   sample++;
-  std::cout << "sample" << sample << std::endl;
+  ROS_INFO_STREAM("Sample " << sample);
   std::vector<double> camera_p;
   std::vector<double> camera_n;
   std::vector<double> velodyne_p;
@@ -487,7 +473,7 @@ void get_samples(const cam_lidar_calibration::calibration_data::ConstPtr& data)
 
 bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibration::Sample::Response& res)
 {
-  std::cout << "input samples collected" << std::endl;
+  ROS_INFO("Input samples collected");
   calibrationdata.cameranormals_mat = cv::Mat(sample, 3, CV_64F);
   calibrationdata.camerapoints_mat = cv::Mat(sample, 3, CV_64F);
   calibrationdata.velodynepoints_mat = cv::Mat(sample, 3, CV_64F);
@@ -512,11 +498,10 @@ bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibrati
   cv::Mat NN = calibrationdata.cameranormals_mat.t() * calibrationdata.cameranormals_mat;
   cv::Mat NM = calibrationdata.cameranormals_mat.t() * calibrationdata.velodynenormals_mat;
   cv::Mat UNR = (NN.inv() * NM).t();  // Analytical rotation matrix for real data
-  std::cout << "Analytical rotation matrix " << UNR << std::endl;
+  ROS_INFO_STREAM("Analytical rotation matrix " << UNR);
   std::vector<double> euler;
   euler = rotm2eul(UNR);  // rpy wrt original axes
-  std::cout << "Analytical Euler angles " << euler.at(0) << " " << euler.at(1) << " " << euler.at(2) << " "
-            << std::endl;
+  ROS_INFO_STREAM("Analytical Euler angles " << euler.at(0) << " " << euler.at(1) << " " << euler.at(2));
   eul.e1 = euler[0];
   eul.e2 = euler[1];
   eul.e3 = euler[2];
@@ -562,8 +547,9 @@ bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibrati
   eul_t.x = summed_diff.at<double>(0);
   eul_t.y = summed_diff.at<double>(1);
   eul_t.z = summed_diff.at<double>(2);
-  std::cout << "Rotation and Translation after first optimization " << eul_t.e1 << " " << eul_t.e2 << " " << eul_t.e3
-            << " " << eul_t.x << " " << eul_t.y << " " << eul_t.z << std::endl;
+  ROS_INFO_STREAM("Rotation and Translation after first optimization " << eul_t.e1 << " " << eul_t.e2 << " " << eul_t.e3
+                                                                       << " " << eul_t.x << " " << eul_t.y << " "
+                                                                       << eul_t.z);
 
   // extrinsics stored the vector of extrinsic parameters in every iteration
   std::vector<std::vector<double>> extrinsics;
@@ -628,10 +614,10 @@ bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibrati
   rot_trans.x = e_x / 10;
   rot_trans.y = e_y / 10;
   rot_trans.z = e_z / 10;
-  std::cout << "Extrinsic Parameters "
-            << " " << rot_trans.e1 << " " << rot_trans.e2 << " " << rot_trans.e3 << " " << rot_trans.x << " "
-            << rot_trans.y << " " << rot_trans.z << std::endl;
-  std::cout << "The problem is optimized in " << timer.toc() << " seconds." << std::endl;
+  ROS_INFO_STREAM("Extrinsic Parameters "
+                  << " " << rot_trans.e1 << " " << rot_trans.e2 << " " << rot_trans.e3 << " " << rot_trans.x << " "
+                  << rot_trans.y << " " << rot_trans.z);
+  ROS_INFO_STREAM("The problem is optimized in " << timer.toc() << " seconds");
 
   image_projection(rot_trans);  // Project the pointcloud on the image with the obtained extrinsics
   return true;
@@ -804,41 +790,7 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "optimizer");
   ros::NodeHandle n;
 
-  int cb_l, cb_b, l, b, e_l, e_b, i_l, i_b;
-  std::string pkg_loc = ros::package::getPath("cam_lidar_calibration");
-  std::ifstream infile(pkg_loc + "/cfg/initial_params.txt");
-
-  infile >> i_params.camera_topic;
-  infile >> i_params.lidar_topic;
-  infile >> i_params.fisheye_model;
-  infile >> i_params.lidar_ring_count;
-  infile >> cb_l;
-  infile >> cb_b;
-  i_params.grid_size = std::make_pair(cb_l, cb_b);
-  infile >> i_params.square_length;
-  infile >> l;
-  infile >> b;
-  i_params.board_dimension = std::make_pair(l, b);
-  infile >> e_l;
-  infile >> e_b;
-  i_params.cb_translation_error = std::make_pair(e_l, e_b);
-  double camera_mat[9];
-  for (int i = 0; i < 9; i++)
-  {
-    infile >> camera_mat[i];
-  }
-  cv::Mat(3, 3, CV_64F, &camera_mat).copyTo(i_params.cameramat);
-
-  infile >> i_params.distcoeff_num;
-  double dist_coeff[i_params.distcoeff_num];
-  for (int i = 0; i < i_params.distcoeff_num; i++)
-  {
-    infile >> dist_coeff[i];
-  }
-  cv::Mat(1, i_params.distcoeff_num, CV_64F, &dist_coeff).copyTo(i_params.distcoeff);
-  infile >> i_l;
-  infile >> i_b;
-  i_params.image_size = std::make_pair(i_l, i_b);
+  cam_lidar_calibration::loadParams(n, i_params);
 
   ros::ServiceServer optimise_service = n.advertiseService("optimise", optimiseCB);
   ros::Subscriber calibdata_sub = n.subscribe("roi/points", 5, get_samples);
