@@ -4,7 +4,6 @@ project(cam_lidar_calibration)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
 find_package(catkin REQUIRED COMPONENTS
-  cmake_modules
   cv_bridge
   dynamic_reconfigure
   image_transport
