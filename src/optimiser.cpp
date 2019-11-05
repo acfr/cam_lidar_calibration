@@ -10,11 +10,8 @@
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <message_filters/subscriber.h>
-#include <message_filters/synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/transforms.h>
-#include <sensor_msgs/PointCloud2.h>
 #include <std_msgs/Int8.h>
 #include <tf/transform_datatypes.h>
 
@@ -23,20 +20,10 @@
 #include "cam_lidar_calibration/openga.h"
 #include <cam_lidar_calibration/Sample.h>
 
-int sample = 0;
-bool sensor_pair = 0;
-bool output = 0;
-bool output2 = 0;
-static cv::Mat new_K;
-cv::Mat raw_image, undist_image;
-pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZIR>);
-image_transport::Publisher pub_img_dist;
-cv_bridge::CvImagePtr cv_ptr(new cv_bridge::CvImage);
-std::vector<double> rotm2eul(cv::Mat);
-double* converto_imgpts(double x, double y, double z);
-void sensor_info_callback(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc);
-pcl::PointCloud<pcl::PointXYZIR> organized_pointcloud(pcl::PointCloud<pcl::PointXYZIR>::Ptr input_pointcloud);
+#include "cam_lidar_calibration/optimiser.h"
 
+namespace cam_lidar_calibration
+{
 double colmap[50][3] = { { 0, 0, 0.5385 },
                          { 0, 0, 0.6154 },
                          { 0, 0, 0.6923 },
@@ -107,48 +94,9 @@ struct CameraVelodyneCalibrationData
 
 cam_lidar_calibration::initial_parameters_t i_params;
 
-struct Rotation
-{
-  double e1;  // Rotation optimization variables
-  double e2;
-  double e3;
-  std::string to_string() const
-  {
-    return std::string("{") + "e1:" + std::to_string(e1) + ", e2:" + std::to_string(e2) + ", e3:" + std::to_string(e3) +
-           "}";
-  }
-} eul;
+void imageProjection(RotationTranslation rot_trans);
 
-struct Rot_Trans
-{
-  double e1;  // Joint (Rotation and translation) optimization variables
-  double e2;
-  double e3;
-  double x;
-  double y;
-  double z;
-  std::string to_string() const
-  {
-    return std::string("{") + "e1:" + std::to_string(e1) + ", e2:" + std::to_string(e2) + ", e3:" + std::to_string(e3) +
-           ", x:" + std::to_string(x) + ", y:" + std::to_string(y) + ", z:" + std::to_string(z) + "}";
-  }
-} eul_t, eul_it;
-void image_projection(Rot_Trans rot_trans);
-
-struct Rotationcost  // equivalent to y in matlab
-{
-  double objective1;  // This is where the results of simulation is stored but not yet finalized.
-};
-
-struct Rot_Trans_cost  // equivalent to y in matlab
-{
-  double objective2;  // This is where the results of simulation is stored but not yet finalized.
-};
-
-typedef EA::Genetic<Rotation, Rotationcost> GA_Type;
-typedef EA::Genetic<Rot_Trans, Rot_Trans_cost> GA_Type2;
-
-void init_genes2(Rot_Trans& p, const std::function<double(void)>& rnd01)
+void Optimiser::init_genes2(RotationTranslation& p, const std::function<double(void)>& rnd01)
 {
   std::vector<double> pi_vals;
   pi_vals.push_back(M_PI / 18);
@@ -171,7 +119,7 @@ void init_genes2(Rot_Trans& p, const std::function<double(void)>& rnd01)
   p.z = eul_t.z + trans_vals.at(RandIndex) * rnd01();
 }
 
-double rotation_fitness_func(double e1, double e2, double e3)
+double Optimiser::rotationFitnessFunc(double e1, double e2, double e3)
 {
   tf::Matrix3x3 rot;
   rot.setRPY(e1, e2, e3);
@@ -220,7 +168,7 @@ double rotation_fitness_func(double e1, double e2, double e3)
   return error_dot + ana;
 }
 
-bool eval_solution2(const Rot_Trans& p, Rot_Trans_cost& c)
+bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslationCost& c)
 {
   const double& e1 = p.e1;
   const double& e2 = p.e2;
@@ -234,7 +182,7 @@ bool eval_solution2(const Rot_Trans& p, Rot_Trans_cost& c)
   cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
                      rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
 
-  double rot_error = rotation_fitness_func(e1, e2, e3);
+  double rot_error = rotationFitnessFunc(e1, e2, e3);
 
   cv::Mat translation_ana = (cv::Mat_<double>(1, 3) << x, y, z);
   cv::Mat rt, t_fin, vpoints, cpoints;
@@ -266,8 +214,8 @@ bool eval_solution2(const Rot_Trans& p, Rot_Trans_cost& c)
   std::vector<double> pixel_error;
   for (int i = 0; i < sample; i++)
   {
-    double* my_cp = converto_imgpts(cp_rot.at<double>(i, 0), cp_rot.at<double>(i, 1), cp_rot.at<double>(i, 2));
-    double* my_vp = converto_imgpts(cpoints.at<double>(i, 0), cpoints.at<double>(i, 1), cpoints.at<double>(i, 2));
+    double* my_cp = convertToImagePoints(cp_rot.at<double>(i, 0), cp_rot.at<double>(i, 1), cp_rot.at<double>(i, 2));
+    double* my_vp = convertToImagePoints(cpoints.at<double>(i, 0), cpoints.at<double>(i, 1), cpoints.at<double>(i, 2));
     double pix_e = sqrt(pow((my_cp[0] - my_vp[0]), 2) + pow((my_cp[1] - my_vp[1]), 2)) *
                    calibrationdata.pixeldata_mat.at<double>(i);
     pixel_error.push_back(pix_e);
@@ -298,9 +246,10 @@ bool eval_solution2(const Rot_Trans& p, Rot_Trans_cost& c)
   return true;  // solution is accepted
 }
 
-Rot_Trans mutate2(const Rot_Trans& X_base, const std::function<double(void)>& rnd01, double shrink_scale)
+RotationTranslation Optimiser::mutate2(const RotationTranslation& X_base, const std::function<double(void)>& rnd01,
+                                       double shrink_scale)
 {
-  Rot_Trans X_new;
+  RotationTranslation X_new;
   bool in_range;
   do
   {
@@ -324,9 +273,10 @@ Rot_Trans mutate2(const Rot_Trans& X_base, const std::function<double(void)>& rn
   return X_new;
 }
 
-Rot_Trans crossover2(const Rot_Trans& X1, const Rot_Trans& X2, const std::function<double(void)>& rnd01)
+RotationTranslation Optimiser::crossover2(const RotationTranslation& X1, const RotationTranslation& X2,
+                                          const std::function<double(void)>& rnd01)
 {
-  Rot_Trans X_new;
+  RotationTranslation X_new;
   double r;
   r = rnd01();
   X_new.e1 = r * X1.e1 + (1.0 - r) * X2.e1;
@@ -343,7 +293,7 @@ Rot_Trans crossover2(const Rot_Trans& X1, const Rot_Trans& X2, const std::functi
   return X_new;
 }
 
-double calculate_SO_total_fitness2(const GA_Type2::thisChromosomeType& X)
+double Optimiser::calculate_SO_total_fitness2(const GA_Type2::thisChromosomeType& X)
 {
   // finalize the cost
   double final_cost = 0.0;
@@ -352,8 +302,9 @@ double calculate_SO_total_fitness2(const GA_Type2::thisChromosomeType& X)
 }
 
 // A function to show/store the results of each generation.
-void SO_report_generation2(int generation_number, const EA::GenerationType<Rot_Trans, Rot_Trans_cost>& last_generation,
-                           const Rot_Trans& best_genes)
+void Optimiser::SO_report_generation2(
+    int generation_number, const EA::GenerationType<RotationTranslation, RotationTranslationCost>& last_generation,
+    const RotationTranslation& best_genes)
 {
   eul_it.e1 = best_genes.e1;
   eul_it.e2 = best_genes.e2;
@@ -363,7 +314,7 @@ void SO_report_generation2(int generation_number, const EA::GenerationType<Rot_T
   eul_it.z = best_genes.z;
 }
 
-void init_genes(Rotation& p, const std::function<double(void)>& rnd01)
+void Optimiser::init_genes(Rotation& p, const std::function<double(void)>& rnd01)
 {
   std::vector<double> pi_vals;
   pi_vals.push_back(M_PI / 8);
@@ -376,18 +327,18 @@ void init_genes(Rotation& p, const std::function<double(void)>& rnd01)
   p.e3 = eul.e3 + pi_vals.at(RandIndex) * rnd01();
 }
 
-bool eval_solution(const Rotation& p, Rotationcost& c)
+bool Optimiser::eval_solution(const Rotation& p, RotationCost& c)
 {
   const double& e1 = p.e1;
   const double& e2 = p.e2;
   const double& e3 = p.e3;
 
-  c.objective1 = rotation_fitness_func(e1, e2, e3);
+  c.objective1 = rotationFitnessFunc(e1, e2, e3);
 
   return true;  // solution is accepted
 }
 
-Rotation mutate(const Rotation& X_base, const std::function<double(void)>& rnd01, double shrink_scale)
+Rotation Optimiser::mutate(const Rotation& X_base, const std::function<double(void)>& rnd01, double shrink_scale)
 {
   Rotation X_new;
   bool in_range;
@@ -405,7 +356,7 @@ Rotation mutate(const Rotation& X_base, const std::function<double(void)>& rnd01
   return X_new;
 }
 
-Rotation crossover(const Rotation& X1, const Rotation& X2, const std::function<double(void)>& rnd01)
+Rotation Optimiser::crossover(const Rotation& X1, const Rotation& X2, const std::function<double(void)>& rnd01)
 {
   Rotation X_new;
   double r = rnd01();
@@ -417,7 +368,7 @@ Rotation crossover(const Rotation& X1, const Rotation& X2, const std::function<d
   return X_new;
 }
 
-double calculate_SO_total_fitness(const GA_Type::thisChromosomeType& X)
+double Optimiser::calculate_SO_total_fitness(const GA_Type::thisChromosomeType& X)
 {
   double final_cost = 0.0;  // finalize the cost
   final_cost += X.middle_costs.objective1;
@@ -425,8 +376,9 @@ double calculate_SO_total_fitness(const GA_Type::thisChromosomeType& X)
 }
 
 // A function to show/store the results of each generation.
-void SO_report_generation(int generation_number, const EA::GenerationType<Rotation, Rotationcost>& last_generation,
-                          const Rotation& best_genes)
+void Optimiser::SO_report_generation(int generation_number,
+                                     const EA::GenerationType<Rotation, RotationCost>& last_generation,
+                                     const Rotation& best_genes)
 {
   //  std::cout
   //      <<"Generation ["<<generation_number<<"], "
@@ -444,7 +396,7 @@ void SO_report_generation(int generation_number, const EA::GenerationType<Rotati
   //            <<  eul_t.e3 << std::endl;
 }
 
-void get_samples(const cam_lidar_calibration::calibration_data::ConstPtr& data)
+void Optimiser::getSamples(const cam_lidar_calibration::calibration_data::ConstPtr& data)
 {
   sample++;
   ROS_INFO_STREAM("Sample " << sample);
@@ -471,7 +423,7 @@ void get_samples(const cam_lidar_calibration::calibration_data::ConstPtr& data)
   calibrationdata.pixeldata.push_back(data->pixeldata);
 }
 
-bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibration::Sample::Response& res)
+bool Optimiser::optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibration::Sample::Response& res)
 {
   ROS_INFO("Input samples collected");
   calibrationdata.cameranormals_mat = cv::Mat(sample, 3, CV_64F);
@@ -509,6 +461,7 @@ bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibrati
   EA::Chronometer timer;
   timer.tic();
 
+  namespace ph = std::placeholders;
   // Optimization for rotation alone
   GA_Type ga_obj;
   ga_obj.problem_mode = EA::GA_MODE::SOGA;
@@ -516,12 +469,12 @@ bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibrati
   ga_obj.verbose = false;
   ga_obj.population = 200;
   ga_obj.generation_max = 1000;
-  ga_obj.calculate_SO_total_fitness = calculate_SO_total_fitness;
-  ga_obj.init_genes = init_genes;
-  ga_obj.eval_solution = eval_solution;
-  ga_obj.mutate = mutate;
-  ga_obj.crossover = crossover;
-  ga_obj.SO_report_generation = SO_report_generation;
+  ga_obj.calculate_SO_total_fitness = std::bind(&Optimiser::calculate_SO_total_fitness, this, ph::_1);
+  ga_obj.init_genes = std::bind(&Optimiser::init_genes, this, ph::_1, ph::_2);
+  ga_obj.eval_solution = std::bind(&Optimiser::eval_solution, this, ph::_1, ph::_2);
+  ga_obj.mutate = std::bind(&Optimiser::mutate, this, ph::_1, ph::_2, ph::_3);
+  ga_obj.crossover = std::bind(&Optimiser::crossover, this, ph::_1, ph::_2, ph::_3);
+  ga_obj.SO_report_generation = std::bind(&Optimiser::SO_report_generation, this, ph::_1, ph::_2, ph::_3);
   ga_obj.best_stall_max = 100;
   ga_obj.average_stall_max = 100;
   ga_obj.tol_stall_average = 1e-8;
@@ -562,12 +515,12 @@ bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibrati
     ga_obj2.verbose = false;
     ga_obj2.population = 200;
     ga_obj2.generation_max = 1000;
-    ga_obj2.calculate_SO_total_fitness = calculate_SO_total_fitness2;
-    ga_obj2.init_genes = init_genes2;
-    ga_obj2.eval_solution = eval_solution2;
-    ga_obj2.mutate = mutate2;
-    ga_obj2.crossover = crossover2;
-    ga_obj2.SO_report_generation = SO_report_generation2;
+    ga_obj2.calculate_SO_total_fitness = std::bind(&Optimiser::calculate_SO_total_fitness2, this, ph::_1);
+    ga_obj2.init_genes = std::bind(&Optimiser::init_genes2, this, ph::_1, ph::_2);
+    ga_obj2.eval_solution = std::bind(&Optimiser::eval_solution2, this, ph::_1, ph::_2);
+    ga_obj2.mutate = std::bind(&Optimiser::mutate2, this, ph::_1, ph::_2, ph::_3);
+    ga_obj2.crossover = std::bind(&Optimiser::crossover2, this, ph::_1, ph::_2, ph::_3);
+    ga_obj2.SO_report_generation = std::bind(&Optimiser::SO_report_generation2, this, ph::_1, ph::_2, ph::_3);
     ga_obj2.best_stall_max = 100;
     ga_obj2.average_stall_max = 100;
     ga_obj2.tol_stall_average = 1e-8;
@@ -607,7 +560,7 @@ bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibrati
     e_z += extrinsics[i][5];
   }
 
-  Rot_Trans rot_trans;
+  RotationTranslation rot_trans;
   rot_trans.e1 = e_e1 / 10;
   rot_trans.e2 = e_e2 / 10;
   rot_trans.e3 = e_e3 / 10;
@@ -617,9 +570,9 @@ bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibrati
   ROS_INFO_STREAM("Extrinsic Parameters "
                   << " " << rot_trans.e1 << " " << rot_trans.e2 << " " << rot_trans.e3 << " " << rot_trans.x << " "
                   << rot_trans.y << " " << rot_trans.z);
-  ROS_INFO_STREAM("The problem is optimized in " << timer.toc() << " seconds");
+  ROS_INFO_STREAM("The problem was optimised in " << timer.toc() << " seconds");
 
-  image_projection(rot_trans);  // Project the pointcloud on the image with the obtained extrinsics
+  imageProjection(rot_trans);  // Project the pointcloud on the image with the obtained extrinsics
   return true;
 }
 
@@ -634,7 +587,7 @@ std::vector<double> rotm2eul(cv::Mat mat)
   return euler;
 }
 double tmpxC;
-double* converto_imgpts(double x, double y, double z)
+double* Optimiser::convertToImagePoints(double x, double y, double z)
 {
   tmpxC = x / z;
   double tmpyC = y / z;
@@ -676,7 +629,7 @@ double* converto_imgpts(double x, double y, double z)
   return img_coord;
 }
 
-void sensor_info_callback(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc)
+void Optimiser::sensorInfoCB(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc)
 {
   if (!sensor_pair)  // Take the first synchronized camera-lidar pair from the input
   {
@@ -696,7 +649,7 @@ void sensor_info_callback(const sensor_msgs::Image::ConstPtr& img, const sensor_
   }
 }
 
-void image_projection(Rot_Trans rot_trans)
+void Optimiser::imageProjection(RotationTranslation rot_trans)
 {
   cv::Mat new_image_raw;
   new_image_raw = raw_image.clone();
@@ -718,7 +671,7 @@ void image_projection(Rot_Trans rot_trans)
     return;
 
   pcl::PointCloud<pcl::PointXYZIR> organized;
-  organized = organized_pointcloud(cloud);
+  organized = organizedPointcloud(cloud);
 
   for (pcl::PointCloud<pcl::PointXYZIR>::const_iterator it = organized.begin(); it != organized.end(); it++)
   {
@@ -727,7 +680,7 @@ void image_projection(Rot_Trans rot_trans)
     if (itA.z < 0 or std::abs(itA.x / itA.z) > 1.2)
       continue;
 
-    double* img_pts = converto_imgpts(itA.x, itA.y, itA.z);
+    double* img_pts = convertToImagePoints(itA.x, itA.y, itA.z);
     double length = sqrt(pow(itA.x, 2) + pow(itA.y, 2) + pow(itA.z, 2));  // range of every point
     int color = std::min(round((length / 30) * 49), 49.0);
 
@@ -748,7 +701,7 @@ void image_projection(Rot_Trans rot_trans)
   pub_img_dist.publish(cv_ptr->toImageMsg());
 }
 
-pcl::PointCloud<pcl::PointXYZIR> organized_pointcloud(pcl::PointCloud<pcl::PointXYZIR>::Ptr input_pointcloud)
+pcl::PointCloud<pcl::PointXYZIR> organizedPointcloud(pcl::PointCloud<pcl::PointXYZIR>::Ptr input_pointcloud)
 {
   pcl::PointCloud<pcl::PointXYZIR> organized_pc;
   pcl::KdTreeFLANN<pcl::PointXYZIR> kdtree;
@@ -784,25 +737,34 @@ pcl::PointCloud<pcl::PointXYZIR> organized_pointcloud(pcl::PointCloud<pcl::Point
   return (organized_pc);
 }
 
-int main(int argc, char** argv)
+Optimiser::Optimiser()
 {
-  ROS_INFO("optimizer");
-  ros::init(argc, argv, "optimizer");
   ros::NodeHandle n;
 
-  cam_lidar_calibration::loadParams(n, i_params);
+  loadParams(n, i_params);
+  cloud = pcl::PointCloud<pcl::PointXYZIR>::Ptr(new pcl::PointCloud<pcl::PointXYZIR>);
+  cv_ptr = cv_bridge::CvImagePtr(new cv_bridge::CvImage);
 
-  ros::ServiceServer optimise_service = n.advertiseService("optimise", optimiseCB);
-  ros::Subscriber calibdata_sub = n.subscribe("roi/points", 5, get_samples);
+  optimise_service_ = n.advertiseService("optimise", &Optimiser::optimiseCB, this);
+  calibdata_sub_ = n.subscribe("roi/points", 5, &Optimiser::getSamples, this);
 
   message_filters::Subscriber<sensor_msgs::Image> image_sub(n, i_params.camera_topic, 5);
   message_filters::Subscriber<sensor_msgs::PointCloud2> pcl_sub(n, i_params.lidar_topic, 5);
-  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::PointCloud2> MySyncPolicy;
-  message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(5), image_sub, pcl_sub);
-  sync.registerCallback(boost::bind(&sensor_info_callback, _1, _2));
+  sync = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(ImageLidarSyncPolicy(5), image_sub,
+                                                                               pcl_sub);
+  sync->registerCallback(boost::bind(&Optimiser::sensorInfoCB, this, _1, _2));
 
   image_transport::ImageTransport it(n);
   pub_img_dist = it.advertise("image_projection", 20);
+}
+}  // namespace cam_lidar_calibration
+
+int main(int argc, char** argv)
+{
+  ROS_INFO("Optimiser");
+  ros::init(argc, argv, "optimiser");
+
+  cam_lidar_calibration::Optimiser o;
 
   ros::spin();
   return 0;

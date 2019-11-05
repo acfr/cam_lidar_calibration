@@ -63,8 +63,8 @@ catkin_package(
 add_library(load_params src/load_params.cpp)
 target_link_libraries(load_params ${catkin_LIBRARIES} ${OpenCV_LIBS})
 
-add_executable(optimizer src/optimizer.cpp)
-target_link_libraries(optimizer load_params ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
+add_executable(optimiser src/optimiser.cpp)
+target_link_libraries(optimiser load_params ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
 
 add_executable(feature_extraction
 src/feature_extractor.cpp
@@ -81,7 +81,7 @@ target_link_libraries(cam_lidar_calibration Qt5::Widgets ${catkin_LIBRARIES})
 install(TARGETS
   load_params
   feature_extraction
-  optimizer
+  optimiser
   cam_lidar_calibration
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

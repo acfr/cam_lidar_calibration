@@ -12,7 +12,7 @@
   <node pkg="cam_lidar_calibration" type="feature_extraction" name="feature_extraction" output="screen">
   </node>
 
-  <node pkg="cam_lidar_calibration" type="optimizer" name="optimizer" output="screen">
+  <node pkg="cam_lidar_calibration" type="optimiser" name="optimiser" output="screen">
   </node>
 
   <node type="rviz" name="rviz" pkg="rviz" args="-d $(find cam_lidar_calibration)/rviz/cam_lidar_calibration.rviz" />
