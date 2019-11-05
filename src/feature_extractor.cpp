@@ -174,6 +174,8 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
   // Runs only if user presses 'i' to get a sample
   if (flag == Sample::Request::CAPTURE)
   {
+    flag = 0;  // Reset the capture flag
+
     ROS_INFO("Processing sample");
     cv::Mat corner_vectors = cv::Mat::eye(3, 5, CV_64F);
     cv::Mat chessboard_normal = cv::Mat(1, 3, CV_64F);
@@ -402,6 +404,12 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     pcl::ExtractIndices<pcl::PointXYZIR> extract;
     seg.setInputCloud(cloud_filtered);
     seg.segment(*inliers, *coefficients);
+    // Check that segmentation succeeded
+    if (coefficients->values.size() < 3)
+    {
+      ROS_WARN("Checkerboard plane segmentation failed");
+      return;
+    }
     // Plane normal vector magnitude
     float mag =
         sqrt(pow(coefficients->values[0], 2) + pow(coefficients->values[1], 2) + pow(coefficients->values[2], 2));
@@ -777,7 +785,6 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
     // Feature data is published(chosen) only if 'enter' is pressed
     roi_publisher.publish(sample_data);
-    flag = 0;
   }  // if (flag == Sample::Request::CAPTURE)
 }  // End of extractRegionOfInterest
 
