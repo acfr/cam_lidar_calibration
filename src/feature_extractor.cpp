@@ -26,6 +26,8 @@ using cv::Mat_;
 using cv::Size;
 using cv::TermCriteria;
 
+using PointCloud = pcl::PointCloud<pcl::PointXYZIR>;
+
 int main(int argc, char** argv)
 {
   // Initialize Node and handles
@@ -52,8 +54,6 @@ void FeatureExtractor::onInit()
 
   it_.reset(new image_transport::ImageTransport(public_nh));
   it_p_.reset(new image_transport::ImageTransport(private_nh));
-  image_sub = new image_sub_type(public_nh, i_params.camera_topic, queue_rate);
-  pcl_sub = new pc_sub_type(public_nh, i_params.lidar_topic, queue_rate);
 
   // Dynamic reconfigure gui to set the experimental region bounds
   server = boost::make_shared<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>>(pnh);
@@ -62,12 +62,15 @@ void FeatureExtractor::onInit()
   server->setCallback(f);
 
   // Synchronizer to get synchronized camera-lidar scan pairs
-  sync = new message_filters::Synchronizer<MySyncPolicy>(MySyncPolicy(queue_rate), *image_sub, *pcl_sub);
-  sync->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
+  image_sub_ = std::make_shared<image_sub_type>(public_nh, i_params.camera_topic, queue_rate_);
+  pc_sub_ = std::make_shared<pc_sub_type>(public_nh, i_params.lidar_topic, queue_rate_);
+  image_pc_sync_ = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(
+      ImageLidarSyncPolicy(queue_rate_), *image_sub_, *pc_sub_);
+  image_pc_sync_->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
 
   roi_publisher = public_nh.advertise<cam_lidar_calibration::calibration_data>("roi/points", 10, true);
-  pub_cloud = public_nh.advertise<sensor_msgs::PointCloud2>("velodyne_features", 1);
-  expt_region = public_nh.advertise<sensor_msgs::PointCloud2>("Experimental_region", 10);
+  pub_cloud = public_nh.advertise<PointCloud>("velodyne_features", 1);
+  expt_region = public_nh.advertise<PointCloud>("Experimental_region", 10);
   sample_service_ = public_nh.advertiseService("sample", &FeatureExtractor::sampleCB, this);
   vis_pub = public_nh.advertise<visualization_msgs::Marker>("visualization_marker", 0);
   visPub = public_nh.advertise<visualization_msgs::Marker>("boardcorners", 0);
@@ -143,12 +146,10 @@ double* FeatureExtractor::convertToImagePoints(double x, double y, double z)
 
 // Extract features of interest
 void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img,
-                                               const sensor_msgs::PointCloud2::ConstPtr& pc)
+                                               const PointCloud::ConstPtr& cloud1)
 {
-  pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud1(new pcl::PointCloud<pcl::PointXYZIR>),
-      cloud_filtered1(new pcl::PointCloud<pcl::PointXYZIR>), cloud_passthrough1(new pcl::PointCloud<pcl::PointXYZIR>);
+  PointCloud::Ptr cloud_filtered1(new PointCloud), cloud_passthrough1(new PointCloud);
   sensor_msgs::PointCloud2 cloud_final1;
-  pcl::fromROSMsg(*pc, *cloud1);
 
   // Filter out the experimental region
   pcl::PassThrough<pcl::PointXYZIR> pass1;
@@ -353,14 +354,11 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
     //////////////// POINT CLOUD FEATURES //////////////////
 
-    pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZIR>),
-        cloud_filtered(new pcl::PointCloud<pcl::PointXYZIR>), cloud_passthrough(new pcl::PointCloud<pcl::PointXYZIR>),
-        corrected_plane(new pcl::PointCloud<pcl::PointXYZIR>);
+    PointCloud::Ptr cloud_filtered(new PointCloud), cloud_passthrough(new PointCloud), corrected_plane(new PointCloud);
     sensor_msgs::PointCloud2 cloud_final;
-    pcl::fromROSMsg(*pc, *cloud);
     // Filter out the experimental region
     pcl::PassThrough<pcl::PointXYZIR> pass;
-    pass.setInputCloud(cloud);
+    pass.setInputCloud(cloud1);
     pass.setFilterFieldName("x");
     pass.setFilterLimits(bound.x_min, bound.x_max);
     pass.filter(*cloud_passthrough);
@@ -415,7 +413,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         sqrt(pow(coefficients->values[0], 2) + pow(coefficients->values[1], 2) + pow(coefficients->values[2], 2));
 
     // Project the inliers on the fit plane
-    pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud_projected(new pcl::PointCloud<pcl::PointXYZIR>);
+    PointCloud::Ptr cloud_projected(new PointCloud);
     pcl::ProjectInliers<pcl::PointXYZIR> proj;
     proj.setModelType(pcl::SACMODEL_PLANE);
     proj.setInputCloud(cloud_filtered);
@@ -448,8 +446,8 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
     // Second: Arrange points in every ring in descending order of y coordinate
     pcl::PointXYZIR max, min;
-    pcl::PointCloud<pcl::PointXYZIR>::Ptr max_points(new pcl::PointCloud<pcl::PointXYZIR>);
-    pcl::PointCloud<pcl::PointXYZIR>::Ptr min_points(new pcl::PointCloud<pcl::PointXYZIR>);
+    PointCloud::Ptr max_points(new PointCloud);
+    PointCloud::Ptr min_points(new PointCloud);
     for (int i = 0; static_cast<size_t>(i) < candidate_segments.size(); i++)
     {
       if (candidate_segments[i].size() == 0)  // If no points belong to a aprticular ring number
@@ -494,8 +492,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     pcl::PointIndices::Ptr inliers_right_up(new pcl::PointIndices);
     pcl::ModelCoefficients::Ptr coefficients_right_dwn(new pcl::ModelCoefficients);
     pcl::PointIndices::Ptr inliers_right_dwn(new pcl::PointIndices);
-    pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud_f(new pcl::PointCloud<pcl::PointXYZIR>),
-        cloud_f1(new pcl::PointCloud<pcl::PointXYZIR>);
+    PointCloud::Ptr cloud_f(new PointCloud), cloud_f1(new PointCloud);
 
     seg.setModelType(pcl::SACMODEL_LINE);
     seg.setMethodType(pcl::SAC_RANSAC);

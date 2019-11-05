@@ -20,7 +20,7 @@
 #include "cam_lidar_calibration/load_params.h"
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
-typedef message_filters::Subscriber<sensor_msgs::PointCloud2> pc_sub_type;
+typedef message_filters::Subscriber<pcl::PointCloud<pcl::PointXYZIR>> pc_sub_type;
 
 namespace cam_lidar_calibration
 {
@@ -30,7 +30,8 @@ public:
   FeatureExtractor() = default;
   ~FeatureExtractor() = default;
 
-  void extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc);
+  void extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img,
+                               const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& pc);
   bool sampleCB(Sample::Request& req, Sample::Response& res);
   void boundsCB(boundsConfig& config, uint32_t level);
   double* convertToImagePoints(double x, double y, double z);
@@ -53,17 +54,20 @@ private:
   int flag = 0;
   cam_lidar_calibration::boundsConfig bound;
   cam_lidar_calibration::calibration_data sample_data;
-  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::PointCloud2> MySyncPolicy;
-  message_filters::Synchronizer<MySyncPolicy>* sync;
-  int queue_rate = 5;
+
+  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, pcl::PointCloud<pcl::PointXYZIR>>
+      ImageLidarSyncPolicy;
+  std::shared_ptr<image_sub_type> image_sub_;
+  std::shared_ptr<pc_sub_type> pc_sub_;
+  std::shared_ptr<message_filters::Synchronizer<ImageLidarSyncPolicy>> image_pc_sync_;
+  int queue_rate_ = 5;
 
   ros::Publisher roi_publisher;
   ros::Publisher pub_cloud, expt_region;
   ros::Publisher vis_pub, visPub;
   image_transport::Publisher image_publisher;
   ros::ServiceServer sample_service_;
-  message_filters::Subscriber<sensor_msgs::Image>* image_sub;
-  message_filters::Subscriber<sensor_msgs::PointCloud2>* pcl_sub;
+
   visualization_msgs::Marker marker;
   boost::shared_ptr<image_transport::ImageTransport> it_;
   boost::shared_ptr<image_transport::ImageTransport> it_p_;
