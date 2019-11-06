@@ -73,8 +73,8 @@ void FeatureExtractor::onInit()
   expt_region = public_nh.advertise<PointCloud>("Experimental_region", 10);
   sample_service_ = public_nh.advertiseService("sample", &FeatureExtractor::sampleCB, this);
   vis_pub = public_nh.advertise<visualization_msgs::Marker>("visualization_marker", 0);
-  visPub = public_nh.advertise<visualization_msgs::Marker>("boardcorners", 0);
-  image_publisher = it_p_->advertise("camera_features", 1);
+  visPub = public_nh.advertise<visualization_msgs::Marker>("board_corners_3d", 0);
+  image_publisher = it_->advertise("camera_features", 1);
   NODELET_INFO_STREAM("Camera Lidar Calibration");
 }
 
@@ -97,295 +97,200 @@ bool FeatureExtractor::sampleCB(Sample::Request& req, Sample::Response& res)
 void FeatureExtractor::boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level)
 {
   // Read the values corresponding to the motion of slider bars in reconfigure gui
-  bound = config;
+  bounds_ = config;
   ROS_INFO("Reconfigure Request: %lf %lf %lf %lf %lf %lf", config.x_min, config.x_max, config.y_min, config.y_max,
            config.z_min, config.z_max);
 }
 
-// Convert 3D points w.r.t camera frame to 2D pixel points in image frame
-double* FeatureExtractor::convertToImagePoints(double x, double y, double z)
+void FeatureExtractor::passthrough(const PointCloud::ConstPtr& input_pc, PointCloud::Ptr& output_pc)
 {
-  double tmpxC = x / z;
-  double tmpyC = y / z;
-  cv::Point2d planepointsC;
-  planepointsC.x = tmpxC;
-  planepointsC.y = tmpyC;
-  double r2 = tmpxC * tmpxC + tmpyC * tmpyC;
+  PointCloud::Ptr x(new PointCloud);
+  PointCloud::Ptr z(new PointCloud);
+  // Filter out the experimental region
+  pcl::PassThrough<pcl::PointXYZIR> pass;
+  pass.setInputCloud(input_pc);
+  pass.setFilterFieldName("x");
+  pass.setFilterLimits(bounds_.x_min, bounds_.x_max);
+  pass.filter(*x);
+  pass.setInputCloud(x);
+  pass.setFilterFieldName("z");
+  pass.setFilterLimits(bounds_.z_min, bounds_.z_max);
+  pass.filter(*z);
+  pass.setInputCloud(z);
+  pass.setFilterFieldName("y");
+  pass.setFilterLimits(bounds_.y_min, bounds_.y_max);
+  pass.filter(*output_pc);
+}
+
+auto FeatureExtractor::chessboardProjection(const std::vector<cv::Point2f>& corners,
+                                            const cv_bridge::CvImagePtr& cv_ptr)
+{
+  // Now find the chessboard in 3D space
+  cv::Point3f chessboard_centre(i_params.chessboard_pattern_size.width, i_params.chessboard_pattern_size.height, 0);
+  chessboard_centre *= 0.5 * i_params.square_length;
+  std::vector<cv::Point3f> corners_3d;
+  for (int y = 0; y < i_params.chessboard_pattern_size.height; y++)
+  {
+    for (int x = 0; x < i_params.chessboard_pattern_size.width; x++)
+    {
+      corners_3d.push_back(cv::Point3f(x, y, 0) * i_params.square_length - chessboard_centre);
+    }
+  }
+
+  // checkerboard corners, middle square corners, board corners and centre
+  std::vector<cv::Point3f> board_corners_3d;
+  // Board corner coordinates from the centre of the checkerboard
+  for (auto x = 0; x < 2; x++)
+  {
+    for (auto y = 0; y < 2; y++)
+    {
+      board_corners_3d.push_back(
+          cv::Point3f((-0.5 + x) * i_params.board_dimensions.width, (-0.5 + y) * i_params.board_dimensions.height, 0) -
+          i_params.cb_translation_error);
+    }
+  }
+  // Board centre coordinates from the centre of the checkerboard (due to incorrect placement of checkerbord on
+  // board)
+  board_corners_3d.push_back(-i_params.cb_translation_error);
+
+  std::vector<cv::Point2f> corner_image_points, board_image_points;
+
+  cv::Mat rvec(3, 3, cv::DataType<double>::type);  // Initialization for pinhole and fisheye cameras
+  cv::Mat tvec(3, 1, cv::DataType<double>::type);
 
   if (i_params.fisheye_model)
   {
-    double r1 = pow(r2, 0.5);
-    double a0 = std::atan(r1);
-    // distortion function for a fisheye lens
-    double a1 =
-        a0 * (1 + i_params.distcoeff.at<double>(0) * pow(a0, 2) + i_params.distcoeff.at<double>(1) * pow(a0, 4) +
-              i_params.distcoeff.at<double>(2) * pow(a0, 6) + i_params.distcoeff.at<double>(3) * pow(a0, 8));
-    planepointsC.x = (a1 / r1) * tmpxC;
-    planepointsC.y = (a1 / r1) * tmpyC;
-    planepointsC.x = i_params.cameramat.at<double>(0, 0) * planepointsC.x + i_params.cameramat.at<double>(0, 2);
-    planepointsC.y = i_params.cameramat.at<double>(1, 1) * planepointsC.y + i_params.cameramat.at<double>(1, 2);
+    // Undistort the image by applying the fisheye intrinsic parameters
+    // the final input param is the camera matrix in the new or rectified coordinate frame.
+    // We put this to be the same as i_params.cameramat or else it will be set to empty matrix by default.
+    std::vector<cv::Point2f> corners_undistorted;
+    cv::fisheye::undistortPoints(corners, corners_undistorted, i_params.cameramat, i_params.distcoeff,
+                                 i_params.cameramat);
+    cv::solvePnP(corners_3d, corners_undistorted, i_params.cameramat, cv::noArray(), rvec, tvec);
+    cv::fisheye::projectPoints(corners_3d, corner_image_points, rvec, tvec, i_params.cameramat, i_params.distcoeff);
+    cv::fisheye::projectPoints(board_corners_3d, board_image_points, rvec, tvec, i_params.cameramat,
+                               i_params.distcoeff);
   }
-  else  // For pinhole camera model
+  else
   {
-    double tmpdist = 1 + i_params.distcoeff.at<double>(0) * r2 + i_params.distcoeff.at<double>(1) * r2 * r2 +
-                     i_params.distcoeff.at<double>(4) * r2 * r2 * r2;
-    planepointsC.x = tmpxC * tmpdist + 2 * i_params.distcoeff.at<double>(2) * tmpxC * tmpyC +
-                     i_params.distcoeff.at<double>(3) * (r2 + 2 * tmpxC * tmpxC);
-    planepointsC.y = tmpyC * tmpdist + i_params.distcoeff.at<double>(2) * (r2 + 2 * tmpyC * tmpyC) +
-                     2 * i_params.distcoeff.at<double>(3) * tmpxC * tmpyC;
-    planepointsC.x = i_params.cameramat.at<double>(0, 0) * planepointsC.x + i_params.cameramat.at<double>(0, 2);
-    planepointsC.y = i_params.cameramat.at<double>(1, 1) * planepointsC.y + i_params.cameramat.at<double>(1, 2);
+    // Pinhole model
+    cv::solvePnP(corners_3d, corners, i_params.cameramat, i_params.distcoeff, rvec, tvec);
+    cv::projectPoints(corners_3d, rvec, tvec, i_params.cameramat, i_params.distcoeff, corner_image_points);
+    cv::projectPoints(board_corners_3d, rvec, tvec, i_params.cameramat, i_params.distcoeff, board_image_points);
+  }
+  for (auto& point : corner_image_points)
+  {
+    cv::circle(cv_ptr->image, point, 5, CV_RGB(255, 0, 0), -1);
+  }
+  for (auto& point : board_image_points)
+  {
+    cv::circle(cv_ptr->image, point, 5, CV_RGB(255, 255, 0), -1);
   }
 
-  double* img_coord = new double[2];
-  *(img_coord) = planepointsC.x;
-  *(img_coord + 1) = planepointsC.y;
+  // Return all the necessary coefficients
+  return std::make_tuple(rvec, tvec, board_corners_3d);
+}
 
-  return img_coord;
+std::optional<std::tuple<cv::Mat, cv::Mat>>
+FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
+{
+  // Convert to OpenCV image object
+  cv_bridge::CvImagePtr cv_ptr;
+  cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
+
+  cv::Mat gray;
+  cv::cvtColor(cv_ptr->image, gray, CV_BGR2GRAY);
+  std::vector<cv::Point2f> corners;
+  // Find checkerboard pattern in the image
+  bool pattern_found = findChessboardCorners(gray, i_params.chessboard_pattern_size, corners,
+                                             cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_NORMALIZE_IMAGE);
+  if (!pattern_found)
+  {
+    ROS_WARN("No chessboard found");
+    return std::nullopt;
+  }
+  ROS_INFO("Chessboard found");
+  // Find corner points with sub-pixel accuracy
+  cornerSubPix(gray, corners, Size(11, 11), Size(-1, -1), TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+
+  auto [rvec, tvec, board_corners_3d] = chessboardProjection(corners, cv_ptr);
+
+  cv::Mat corner_vectors = cv::Mat::eye(3, 5, CV_64F);
+  cv::Mat chessboard_normal = cv::Mat(1, 3, CV_64F);
+  cv::Mat chessboardpose = cv::Mat::eye(4, 4, CV_64F);
+  cv::Mat tmprmat = cv::Mat(3, 3, CV_64F);  // rotation matrix
+  cv::Rodrigues(rvec, tmprmat);             // Euler angles to rotation matrix
+
+  for (int j = 0; j < 3; j++)
+  {
+    for (int k = 0; k < 3; k++)
+    {
+      chessboardpose.at<double>(j, k) = tmprmat.at<double>(j, k);
+    }
+    chessboardpose.at<double>(j, 3) = tvec.at<double>(j);
+  }
+
+  chessboard_normal.at<double>(0) = 0;
+  chessboard_normal.at<double>(1) = 0;
+  chessboard_normal.at<double>(2) = 1;
+  chessboard_normal = chessboard_normal * chessboardpose(cv::Rect(0, 0, 3, 3)).t();
+
+  for (size_t k = 0; k < board_corners_3d.size(); k++)
+  {
+    // take every point in board_corners_3d set
+    cv::Point3f pt(board_corners_3d[k]);
+    for (int i = 0; i < 3; i++)
+    {
+      // Transform it to obtain the coordinates in cam frame
+      corner_vectors.at<double>(i, k) = chessboardpose.at<double>(i, 0) * pt.x +
+                                        chessboardpose.at<double>(i, 1) * pt.y + chessboardpose.at<double>(i, 3);
+    }
+  }
+  // Publish the image with all the features marked in it
+  ROS_INFO("Publishing chessboard image");
+  image_publisher.publish(cv_ptr->toImageMsg());
+  return std::make_optional(std::make_tuple(corner_vectors, chessboard_normal));
 }
 
 // Extract features of interest
-void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img,
-                                               const PointCloud::ConstPtr& cloud1)
+void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& image,
+                                               const PointCloud::ConstPtr& pointcloud)
 {
-  PointCloud::Ptr cloud_filtered1(new PointCloud), cloud_passthrough1(new PointCloud);
-  sensor_msgs::PointCloud2 cloud_final1;
-
-  // Filter out the experimental region
-  pcl::PassThrough<pcl::PointXYZIR> pass1;
-  pass1.setInputCloud(cloud1);
-  pass1.setFilterFieldName("x");
-  pass1.setFilterLimits(bound.x_min, bound.x_max);
-  pass1.filter(*cloud_passthrough1);
-  pcl::PassThrough<pcl::PointXYZIR> pass_z1;
-  pass_z1.setInputCloud(cloud_passthrough1);
-  pass_z1.setFilterFieldName("z");
-  pass_z1.setFilterLimits(bound.z_min, bound.z_max);
-  pass_z1.filter(*cloud_passthrough1);
-  pcl::PassThrough<pcl::PointXYZIR> pass_final1;
-  pass_final1.setInputCloud(cloud_passthrough1);
-  pass_final1.setFilterFieldName("y");
-  pass_final1.setFilterLimits(bound.y_min, bound.y_max);
-  pass_final1.filter(*cloud_passthrough1);
+  PointCloud::Ptr cloud_bounded(new PointCloud);
+  passthrough(pointcloud, cloud_bounded);
 
   // Publish the experimental region point cloud
-  pcl::toROSMsg(*cloud_passthrough1, cloud_final1);
-  expt_region.publish(cloud_final1);
+  expt_region.publish(cloud_bounded);
 
-  // Runs only if user presses 'i' to get a sample
   if (flag == Sample::Request::CAPTURE)
   {
     flag = 0;  // Reset the capture flag
 
     ROS_INFO("Processing sample");
-    cv::Mat corner_vectors = cv::Mat::eye(3, 5, CV_64F);
-    cv::Mat chessboard_normal = cv::Mat(1, 3, CV_64F);
-    // checkerboard corners, middle square corners, board corners and centre
-    std::vector<cv::Point2f> image_points, imagePoints1, imagePoints;
 
-    //////////////// IMAGE FEATURES //////////////////
-
-    cv_bridge::CvImagePtr cv_ptr;
-    cv::Size2i patternNum(i_params.grid_size.first, i_params.grid_size.second);
-    cv::Size2i patternSize(i_params.square_length, i_params.square_length);
-
-    try
+    auto retval = locateChessboard(image);
+    if (!retval)
     {
-      cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::BGR8);
+      return;
     }
-    catch (cv_bridge::Exception& e)
-    {
-      ROS_ERROR("cv_bridge exception: %s", e.what());
-    }
-
-    cv::Mat gray;
-    std::vector<cv::Point2f> corners, corners_undistorted;
-    std::vector<cv::Point3f> grid3dpoint;
-    cv::cvtColor(cv_ptr->image, gray, CV_BGR2GRAY);
-    // Find checkerboard pattern in the image
-    bool patternfound =
-        findChessboardCorners(gray, patternNum, corners, cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_NORMALIZE_IMAGE);
-
-    if (patternfound)
-    {
-      ROS_INFO("Checkerboard found");
-      // Find corner points with sub-pixel accuracy
-      cornerSubPix(gray, corners, Size(11, 11), Size(-1, -1),
-                   TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
-      cv::Size imgsize;
-      imgsize.height = cv_ptr->image.rows;
-      imgsize.width = cv_ptr->image.cols;
-      double tx, ty;  // Translation values
-      // Location of board frame origin from the bottom left inner corner of the checkerboard
-      tx = (patternNum.height - 1) * patternSize.height / 2;
-      ty = (patternNum.width - 1) * patternSize.width / 2;
-      // Board corners w.r.t board frame
-      for (int i = 0; i < patternNum.height; i++)
-      {
-        for (int j = 0; j < patternNum.width; j++)
-        {
-          cv::Point3f tmpgrid3dpoint;
-          // Translating origin from bottom left corner to the centre of the checkerboard
-          tmpgrid3dpoint.x = i * patternSize.height - tx;
-          tmpgrid3dpoint.y = j * patternSize.width - ty;
-          tmpgrid3dpoint.z = 0;
-          grid3dpoint.push_back(tmpgrid3dpoint);
-        }
-      }
-      std::vector<cv::Point3f> boardcorners;
-      // Board corner coordinates from the centre of the checkerboard
-      boardcorners.push_back(cv::Point3f((i_params.board_dimension.second - i_params.cb_translation_error.second) / 2,
-                                         (i_params.board_dimension.first - i_params.cb_translation_error.first) / 2,
-                                         0.0));
-      boardcorners.push_back(cv::Point3f(-(i_params.board_dimension.second + i_params.cb_translation_error.second) / 2,
-                                         (i_params.board_dimension.first - i_params.cb_translation_error.first) / 2,
-                                         0.0));
-      boardcorners.push_back(cv::Point3f(-(i_params.board_dimension.second + i_params.cb_translation_error.second) / 2,
-                                         -(i_params.board_dimension.first + i_params.cb_translation_error.first) / 2,
-                                         0.0));
-      boardcorners.push_back(cv::Point3f((i_params.board_dimension.second - i_params.cb_translation_error.second) / 2,
-                                         -(i_params.board_dimension.first + i_params.cb_translation_error.first) / 2,
-                                         0.0));
-      // Board centre coordinates from the centre of the checkerboard (due to incorrect placement of checkerbord on
-      // board)
-      boardcorners.push_back(
-          cv::Point3f(-i_params.cb_translation_error.second / 2, -i_params.cb_translation_error.first / 2, 0.0));
-
-      std::vector<cv::Point3f> square_edge;
-      // centre checkerboard square corner coordinates wrt the centre of the checkerboard (origin)
-      square_edge.push_back(cv::Point3f(-i_params.square_length / 2, -i_params.square_length / 2, 0.0));
-      square_edge.push_back(cv::Point3f(i_params.square_length / 2, i_params.square_length / 2, 0.0));
-      cv::Mat rvec(3, 3, cv::DataType<double>::type);  // Initialization for pinhole and fisheye cameras
-      cv::Mat tvec(3, 1, cv::DataType<double>::type);
-
-      if (i_params.fisheye_model)
-      {
-        // Undistort the image by applying the fisheye intrinsic parameters
-        // the final input param is the camera matrix in the new or rectified coordinate frame.
-        // We put this to be the same as i_params.cameramat or else it will be set to empty matrix by default.
-        cv::fisheye::undistortPoints(corners, corners_undistorted, i_params.cameramat, i_params.distcoeff,
-                                     i_params.cameramat);
-        cv::Mat fake_distcoeff = (Mat_<double>(4, 1) << 0, 0, 0, 0);
-        cv::solvePnP(grid3dpoint, corners_undistorted, i_params.cameramat, fake_distcoeff, rvec, tvec);
-        cv::fisheye::projectPoints(grid3dpoint, image_points, rvec, tvec, i_params.cameramat, i_params.distcoeff);
-        // Mark the centre square corner points
-        cv::fisheye::projectPoints(square_edge, imagePoints1, rvec, tvec, i_params.cameramat, i_params.distcoeff);
-        cv::fisheye::projectPoints(boardcorners, imagePoints, rvec, tvec, i_params.cameramat, i_params.distcoeff);
-        for (size_t i = 0; i < grid3dpoint.size(); i++)
-        {
-          cv::circle(cv_ptr->image, image_points[i], 5, CV_RGB(255, 0, 0), -1);
-        }
-        //        for (int i = 0; i < square_edge.size(); i++)
-        //          cv::circle(cv_ptr->image, imagePoints1[i], 5, CV_RGB(255,0,0), -1);
-        //        // Mark the board corner points and centre point
-        //        for (int i = 0; i < boardcorners.size(); i++)
-        //          cv::circle(cv_ptr->image, imagePoints[i], 5, CV_RGB(255,0,0), -1);
-      }
-      // Pinhole model
-      else
-      {
-        cv::solvePnP(grid3dpoint, corners, i_params.cameramat, i_params.distcoeff, rvec, tvec);
-        cv::projectPoints(grid3dpoint, rvec, tvec, i_params.cameramat, i_params.distcoeff, image_points);
-        // Mark the centre square corner points
-        cv::projectPoints(square_edge, rvec, tvec, i_params.cameramat, i_params.distcoeff, imagePoints1);
-        cv::projectPoints(boardcorners, rvec, tvec, i_params.cameramat, i_params.distcoeff, imagePoints);
-
-        //        for (int i = 0; i < square_edge.size(); i++)
-        //          cv::circle(cv_ptr->image, imagePoints1[i], 5, CV_RGB(255,0,0), -1);
-        //        // Mark the board corner points and centre point
-        //        for (int i = 0; i < boardcorners.size(); i++)
-        //          cv::circle(cv_ptr->image, imagePoints[i], 5, CV_RGB(255,0,0), -1);
-      }
-
-      // chessboardpose is a 3*4 transform matrix that transforms points in board frame to camera frame | R&T
-      cv::Mat chessboardpose = cv::Mat::eye(4, 4, CV_64F);
-      cv::Mat tmprmat = cv::Mat(3, 3, CV_64F);  // rotation matrix
-      cv::Rodrigues(rvec, tmprmat);             // Euler angles to rotation matrix
-
-      for (int j = 0; j < 3; j++)
-      {
-        for (int k = 0; k < 3; k++)
-        {
-          chessboardpose.at<double>(j, k) = tmprmat.at<double>(j, k);
-        }
-        chessboardpose.at<double>(j, 3) = tvec.at<double>(j);
-      }
-
-      chessboard_normal.at<double>(0) = 0;
-      chessboard_normal.at<double>(1) = 0;
-      chessboard_normal.at<double>(2) = 1;
-      chessboard_normal = chessboard_normal * chessboardpose(cv::Rect(0, 0, 3, 3)).t();
-
-      for (size_t k = 0; k < boardcorners.size(); k++)
-      {
-        // take every point in boardcorners set
-        cv::Point3f pt(boardcorners[k]);
-        for (int i = 0; i < 3; i++)
-        {
-          // Transform it to obtain the coordinates in cam frame
-          corner_vectors.at<double>(i, k) = chessboardpose.at<double>(i, 0) * pt.x +
-                                            chessboardpose.at<double>(i, 1) * pt.y + chessboardpose.at<double>(i, 3);
-        }
-
-        // convert 3D coordinates to image coordinates
-        double* img_coord = FeatureExtractor::convertToImagePoints(
-            corner_vectors.at<double>(0, k), corner_vectors.at<double>(1, k), corner_vectors.at<double>(2, k));
-        // Mark the corners and the board centre
-        if (k == 0)
-          cv::circle(cv_ptr->image, cv::Point(img_coord[0], img_coord[1]), 8, CV_RGB(0, 255, 0), -1);  // green
-        else if (k == 1)
-          cv::circle(cv_ptr->image, cv::Point(img_coord[0], img_coord[1]), 8, CV_RGB(255, 255, 0), -1);  // yellow
-        else if (k == 2)
-          cv::circle(cv_ptr->image, cv::Point(img_coord[0], img_coord[1]), 8, CV_RGB(0, 0, 255), -1);  // blue
-        else if (k == 3)
-          cv::circle(cv_ptr->image, cv::Point(img_coord[0], img_coord[1]), 8, CV_RGB(255, 0, 0), -1);  // red
-        else
-          cv::circle(cv_ptr->image, cv::Point(img_coord[0], img_coord[1]), 8, CV_RGB(255, 255, 255),
-                     -1);  // white for centre
-
-        delete[] img_coord;
-      }
-      // Publish the image with all the features marked in it
-      image_publisher.publish(cv_ptr->toImageMsg());
-    }  // if (patternfound)
-
-    else
-      ROS_ERROR("PATTERN NOT FOUND");
-
+    auto [corner_vectors, chessboard_normal] = *retval;
     //////////////// POINT CLOUD FEATURES //////////////////
 
-    PointCloud::Ptr cloud_filtered(new PointCloud), cloud_passthrough(new PointCloud), corrected_plane(new PointCloud);
+    PointCloud::Ptr cloud_filtered(new PointCloud), corrected_plane(new PointCloud);
     sensor_msgs::PointCloud2 cloud_final;
-    // Filter out the experimental region
-    pcl::PassThrough<pcl::PointXYZIR> pass;
-    pass.setInputCloud(cloud1);
-    pass.setFilterFieldName("x");
-    pass.setFilterLimits(bound.x_min, bound.x_max);
-    pass.filter(*cloud_passthrough);
-    pcl::PassThrough<pcl::PointXYZIR> pass_z;
-    pass_z.setInputCloud(cloud_passthrough);
-    pass_z.setFilterFieldName("z");
-    pass_z.setFilterLimits(bound.z_min, bound.z_max);
-    pass_z.filter(*cloud_passthrough);
-    pcl::PassThrough<pcl::PointXYZIR> pass_final;
-    pass_final.setInputCloud(cloud_passthrough);
-    pass_final.setFilterFieldName("y");
-    pass_final.setFilterLimits(bound.y_min, bound.y_max);
-    pass_final.filter(*cloud_passthrough);
     // Filter out the board point cloud
     // find the point with max height(z val) in cloud_passthrough
-    double z_max = cloud_passthrough->points[0].z;
-    for (size_t i = 0; i < cloud_passthrough->points.size(); ++i)
+    double z_max = cloud_bounded->points[0].z;
+    for (size_t i = 0; i < cloud_bounded->points.size(); ++i)
     {
-      if (cloud_passthrough->points[i].z > z_max)
+      if (cloud_bounded->points[i].z > z_max)
       {
-        z_max = cloud_passthrough->points[i].z;
+        z_max = cloud_bounded->points[i].z;
       }
     }
     // subtract by approximate diagonal length (in metres)
     double z_min = z_max - diagonal;
-
-    pass_z.setInputCloud(cloud_passthrough);
+    pcl::PassThrough<pcl::PointXYZIR> pass_z;
     pass_z.setFilterFieldName("z");
     pass_z.setFilterLimits(z_min, z_max);
     pass_z.filter(*cloud_filtered);  // board point cloud
@@ -614,8 +519,6 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     sample_data.velodynecorner[0] = basic_cloud_ptr->points[2].x;
     sample_data.velodynecorner[1] = basic_cloud_ptr->points[2].y;
     sample_data.velodynecorner[2] = basic_cloud_ptr->points[2].z;
-    sample_data.pixeldata =
-        sqrt(pow((imagePoints1[1].x - imagePoints1[0].x), 2) + pow((imagePoints1[1].y - imagePoints1[0].y), 2));
 
     // Visualize 4 corner points of velodyne board, the board edge lines and the centre point
     visualization_msgs::Marker marker1, line_strip, corners_board;

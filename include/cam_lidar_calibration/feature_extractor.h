@@ -34,7 +34,6 @@ public:
                                const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& pc);
   bool sampleCB(Sample::Request& req, Sample::Response& res);
   void boundsCB(boundsConfig& config, uint32_t level);
-  double* convertToImagePoints(double x, double y, double z);
 
   void bypassInit()
   {
@@ -44,6 +43,11 @@ public:
 private:
   virtual void onInit();
 
+  void passthrough(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
+                   pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
+  std::optional<std::tuple<cv::Mat, cv::Mat>> locateChessboard(const sensor_msgs::Image::ConstPtr& image);
+  auto chessboardProjection(const std::vector<cv::Point2f>& corners, const cv_bridge::CvImagePtr& cv_ptr);
+
   initial_parameters_t i_params;
   std::string pkg_loc;
   int cb_l, cb_b, l, b, e_l, e_b;
@@ -52,7 +56,7 @@ private:
   ros::Publisher pub;
   cv::FileStorage fs;
   int flag = 0;
-  cam_lidar_calibration::boundsConfig bound;
+  cam_lidar_calibration::boundsConfig bounds_;
   cam_lidar_calibration::calibration_data sample_data;
 
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, pcl::PointCloud<pcl::PointXYZIR>>
