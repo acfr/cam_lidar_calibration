@@ -13,10 +13,10 @@ struct initial_parameters_t
   std::string lidar_topic;
   bool fisheye_model;
   int lidar_ring_count;
-  std::pair<int, int> grid_size;
-  int square_length;                         // in millimetres
-  std::pair<int, int> board_dimension;       // in millimetres
-  std::pair<int, int> cb_translation_error;  // in millimetres
+  cv::Size chessboard_pattern_size;
+  int square_length;                 // in millimetres
+  cv::Size board_dimensions;         // in millimetres
+  cv::Point3f cb_translation_error;  // in millimetres
   cv::Mat cameramat;
   int distcoeff_num;
   cv::Mat distcoeff;
