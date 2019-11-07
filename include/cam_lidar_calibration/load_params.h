@@ -16,7 +16,7 @@ struct initial_parameters_t
   cv::Size chessboard_pattern_size;
   int square_length;                 // in millimetres
   cv::Size board_dimensions;         // in millimetres
-  cv::Point3f cb_translation_error;  // in millimetres
+  cv::Point3d cb_translation_error;  // in millimetres
   cv::Mat cameramat;
   int distcoeff_num;
   cv::Mat distcoeff;

@@ -18,7 +18,7 @@ void loadParams(const ros::NodeHandle& n, initial_parameters_t& i_params)
   i_params.board_dimensions = cv::Size(w, h);
   n.getParam("chessboard/translation_error/x", e_x);
   n.getParam("chessboard/translation_error/y", e_y);
-  i_params.cb_translation_error = cv::Point3f(e_x, e_y, 0);
+  i_params.cb_translation_error = cv::Point3d(e_x, e_y, 0);
   std::vector<double> camera_mat;
   n.getParam("cameramat", camera_mat);
   cv::Mat(3, 3, CV_64F, camera_mat.data()).copyTo(i_params.cameramat);
