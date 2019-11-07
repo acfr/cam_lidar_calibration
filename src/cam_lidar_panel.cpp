@@ -1,14 +1,13 @@
 #include <QVBoxLayout>
 
 #include "cam_lidar_panel.h"
-#include <cam_lidar_calibration/Sample.h>
+#include <cam_lidar_calibration/Optimise.h>
 
 namespace cam_lidar_calibration
 {
 CamLidarPanel::CamLidarPanel(QWidget* parent) : rviz::Panel(parent)
 {
-  sample_client_ = nh_.serviceClient<cam_lidar_calibration::Sample>("sample");
-  optimise_client_ = nh_.serviceClient<cam_lidar_calibration::Sample>("optimise");
+  optimise_client_ = nh_.serviceClient<cam_lidar_calibration::Optimise>("optimiser");
 
   QVBoxLayout* button_layout = new QVBoxLayout;
   capture_button_ = new QPushButton("Capture sample");
@@ -27,22 +26,22 @@ CamLidarPanel::CamLidarPanel(QWidget* parent) : rviz::Panel(parent)
 
 void CamLidarPanel::captureSample()
 {
-  Sample srv;
-  srv.request.operation = Sample::Request::CAPTURE;
-  sample_client_.call(srv);
+  Optimise srv;
+  srv.request.operation = Optimise::Request::CAPTURE;
+  optimise_client_.call(srv);
 }
 
 void CamLidarPanel::discardSample()
 {
-  Sample srv;
-  srv.request.operation = Sample::Request::DISCARD;
-  sample_client_.call(srv);
+  Optimise srv;
+  srv.request.operation = Optimise::Request::DISCARD;
+  optimise_client_.call(srv);
 }
 
 void CamLidarPanel::optimise()
 {
-  Sample srv;
-  srv.request.operation = Sample::Request::OPTIMISE;
+  Optimise srv;
+  srv.request.operation = Optimise::Request::OPTIMISE;
   optimise_client_.call(srv);
 }
 

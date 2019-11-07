@@ -41,9 +41,7 @@ protected Q_SLOTS:
 protected:
   // The ROS node handle.
   ros::NodeHandle nh_;
-  ros::ServiceClient sample_client_;
-  ros::ServiceClient optimise_client_;  // TODO
-  // Remove when everything is in the same node
+  ros::ServiceClient optimise_client_;
 
   QPushButton* capture_button_;
   QPushButton* discard_button_;
