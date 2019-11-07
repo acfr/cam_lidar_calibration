@@ -1,6 +1,8 @@
 #ifndef optimiser_h_
 #define optimiser_h_
 
+#include "cam_lidar_calibration/openga.h"
+
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -44,6 +46,15 @@ struct RotationTranslationCost  // equivalent to y in matlab
   double objective2;  // This is where the results of simulation is stored but not yet finalized.
 };
 
+struct OptimisationSample
+{
+  cv::Point3d camera_centre;
+  cv::Point3d camera_normal;
+  cv::Point3d lidar_centre;
+  cv::Point3d lidar_normal;
+  cv::Point3d lidar_corner;
+};
+
 typedef EA::Genetic<Rotation, RotationCost> GA_Type;
 typedef EA::Genetic<RotationTranslation, RotationTranslationCost> GA_Type2;
 
@@ -52,6 +63,9 @@ class Optimiser
 public:
   Optimiser();
   ~Optimiser() = default;
+
+  bool optimise();
+  std::vector<OptimisationSample> samples_;
 
   void SO_report_generation(int generation_number, const EA::GenerationType<Rotation, RotationCost>& last_generation,
                             const Rotation& best_genes);
@@ -74,11 +88,9 @@ public:
 
 private:
   double* convertToImagePoints(double x, double y, double z);
-  void getSamples(const cam_lidar_calibration::calibration_data::ConstPtr& data);
   double rotationFitnessFunc(double e1, double e2, double e3);
 
   void imageProjection(RotationTranslation rot_trans);
-  bool optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibration::Sample::Response& res);
   void sensorInfoCB(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc);
 
   Rotation eul;
@@ -96,7 +108,6 @@ private:
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::PointCloud2>
       ImageLidarSyncPolicy;
   std::shared_ptr<message_filters::Synchronizer<ImageLidarSyncPolicy>> sync;
-  ros::ServiceServer optimise_service_;
   ros::Subscriber calibdata_sub_;
 };
 

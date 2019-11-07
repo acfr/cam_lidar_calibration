@@ -13,11 +13,12 @@
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/persistence.hpp>
 
-#include <cam_lidar_calibration/Sample.h>
+#include <cam_lidar_calibration/Optimise.h>
 
 #include <cam_lidar_calibration/boundsConfig.h>
 #include "cam_lidar_calibration/calibration_data.h"
 #include "cam_lidar_calibration/load_params.h"
+#include "cam_lidar_calibration/optimiser.h"
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
 typedef message_filters::Subscriber<pcl::PointCloud<pcl::PointXYZIR>> pc_sub_type;
@@ -32,7 +33,7 @@ public:
 
   void extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img,
                                const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& pc);
-  bool sampleCB(Sample::Request& req, Sample::Response& res);
+  bool serviceCB(Optimise::Request& req, Optimise::Response& res);
   void boundsCB(boundsConfig& config, uint32_t level);
 
   void bypassInit()
@@ -45,19 +46,22 @@ private:
 
   void passthrough(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
                    pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
-  std::optional<std::tuple<cv::Mat, cv::Mat>> locateChessboard(const sensor_msgs::Image::ConstPtr& image);
-  auto chessboardProjection(const std::vector<cv::Point2f>& corners, const cv_bridge::CvImagePtr& cv_ptr);
+  std::optional<std::tuple<std::vector<cv::Point3d>, cv::Mat>>
+  locateChessboard(const sensor_msgs::Image::ConstPtr& image);
+  auto chessboardProjection(const std::vector<cv::Point2d>& corners, const cv_bridge::CvImagePtr& cv_ptr);
 
+  std::optional<std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>>
+  extractBoard(const pcl::PointCloud<pcl::PointXYZIR>::Ptr& cloud);
+
+  Optimiser optimiser_;
   initial_parameters_t i_params;
   std::string pkg_loc;
   int cb_l, cb_b, l, b, e_l, e_b;
-  double diagonal;
 
   ros::Publisher pub;
   cv::FileStorage fs;
   int flag = 0;
   cam_lidar_calibration::boundsConfig bounds_;
-  cam_lidar_calibration::calibration_data sample_data;
 
   typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, pcl::PointCloud<pcl::PointXYZIR>>
       ImageLidarSyncPolicy;
@@ -70,7 +74,7 @@ private:
   ros::Publisher pub_cloud, expt_region;
   ros::Publisher vis_pub, visPub;
   image_transport::Publisher image_publisher;
-  ros::ServiceServer sample_service_;
+  ros::ServiceServer optimise_service_;
 
   visualization_msgs::Marker marker;
   boost::shared_ptr<image_transport::ImageTransport> it_;

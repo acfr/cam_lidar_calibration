@@ -8,6 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   dynamic_reconfigure
   image_transport
+  geometry_msgs
   message_generation
   nodelet
   pcl_conversions
@@ -38,12 +39,11 @@ set(CMAKE_AUTOMOC ON)
 
 add_message_files(
   FILES
-  calibration_data.msg
   extrinsics.msg
   )
 add_service_files(
   FILES
-  Sample.srv
+  Optimise.srv
   )
 generate_messages(
   DEPENDENCIES
@@ -64,11 +64,9 @@ catkin_package(
 add_library(load_params src/load_params.cpp)
 target_link_libraries(load_params ${catkin_LIBRARIES} ${OpenCV_LIBS})
 
-add_executable(optimiser src/optimiser.cpp)
-target_link_libraries(optimiser load_params ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
-
 add_executable(feature_extraction
-src/feature_extractor.cpp
+  src/feature_extractor.cpp
+  src/optimiser.cpp
 )
 
 target_link_libraries(feature_extraction load_params ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
@@ -82,7 +80,6 @@ target_link_libraries(cam_lidar_calibration Qt5::Widgets ${catkin_LIBRARIES})
 install(TARGETS
   load_params
   feature_extraction
-  optimiser
   cam_lidar_calibration
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

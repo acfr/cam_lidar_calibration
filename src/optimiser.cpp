@@ -17,7 +17,6 @@
 
 #include "cam_lidar_calibration/calibration_data.h"
 #include "cam_lidar_calibration/load_params.h"
-#include "cam_lidar_calibration/openga.h"
 #include <cam_lidar_calibration/Sample.h>
 
 #include "cam_lidar_calibration/optimiser.h"
@@ -396,34 +395,7 @@ void Optimiser::SO_report_generation(int generation_number,
   //            <<  eul_t.e3 << std::endl;
 }
 
-void Optimiser::getSamples(const cam_lidar_calibration::calibration_data::ConstPtr& data)
-{
-  sample++;
-  ROS_INFO_STREAM("Sample " << sample);
-  std::vector<double> camera_p;
-  std::vector<double> camera_n;
-  std::vector<double> velodyne_p;
-  std::vector<double> velodyne_n;
-  std::vector<double> velodyne_c;
-
-  for (int i = 0; i < 3; i++)
-  {
-    velodyne_n.push_back(data->velodynenormal[i]);
-    velodyne_p.push_back(data->velodynepoint[i] / 1000);
-    camera_n.push_back(data->cameranormal[i]);
-    camera_p.push_back(data->camerapoint[i] / 1000);
-    velodyne_c.push_back(data->velodynecorner[i]);
-  }
-
-  calibrationdata.velodynenormals.push_back(velodyne_n);
-  calibrationdata.velodynepoints.push_back(velodyne_p);
-  calibrationdata.cameranormals.push_back(camera_n);
-  calibrationdata.camerapoints.push_back(camera_p);
-  calibrationdata.velodynecorners.push_back(velodyne_c);
-  calibrationdata.pixeldata.push_back(data->pixeldata);
-}
-
-bool Optimiser::optimiseCB(cam_lidar_calibration::Sample::Request& req, cam_lidar_calibration::Sample::Response& res)
+bool Optimiser::optimise()
 {
   ROS_INFO("Input samples collected");
   calibrationdata.cameranormals_mat = cv::Mat(sample, 3, CV_64F);
@@ -745,9 +717,6 @@ Optimiser::Optimiser()
   cloud = pcl::PointCloud<pcl::PointXYZIR>::Ptr(new pcl::PointCloud<pcl::PointXYZIR>);
   cv_ptr = cv_bridge::CvImagePtr(new cv_bridge::CvImage);
 
-  optimise_service_ = n.advertiseService("optimise", &Optimiser::optimiseCB, this);
-  calibdata_sub_ = n.subscribe("roi/points", 5, &Optimiser::getSamples, this);
-
   message_filters::Subscriber<sensor_msgs::Image> image_sub(n, i_params.camera_topic, 5);
   message_filters::Subscriber<sensor_msgs::PointCloud2> pcl_sub(n, i_params.lidar_topic, 5);
   sync = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(ImageLidarSyncPolicy(5), image_sub,
@@ -758,15 +727,3 @@ Optimiser::Optimiser()
   pub_img_dist = it.advertise("image_projection", 20);
 }
 }  // namespace cam_lidar_calibration
-
-int main(int argc, char** argv)
-{
-  ROS_INFO("Optimiser");
-  ros::init(argc, argv, "optimiser");
-
-  cam_lidar_calibration::Optimiser o;
-
-  ros::spin();
-  return 0;
-}
-
