@@ -71,7 +71,7 @@ void FeatureExtractor::onInit()
   roi_publisher = public_nh.advertise<cam_lidar_calibration::calibration_data>("roi/points", 10, true);
   pub_cloud = public_nh.advertise<PointCloud>("velodyne_features", 1);
   expt_region = public_nh.advertise<PointCloud>("Experimental_region", 10);
-  optimise_service_ = public_nh.advertiseService("sample", &FeatureExtractor::serviceCB, this);
+  optimise_service_ = public_nh.advertiseService("optimiser", &FeatureExtractor::serviceCB, this);
   vis_pub = public_nh.advertise<visualization_msgs::Marker>("visualization_marker", 0);
   visPub = public_nh.advertise<visualization_msgs::Marker>("board_corners_3d", 0);
   image_publisher = it_->advertise("camera_features", 1);
