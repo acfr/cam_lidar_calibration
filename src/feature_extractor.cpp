@@ -62,8 +62,8 @@ void FeatureExtractor::onInit()
   server->setCallback(f);
 
   // Synchronizer to get synchronized camera-lidar scan pairs
-  image_sub_ = std::make_shared<image_sub_type>(public_nh, i_params.camera_topic, queue_rate_);
-  pc_sub_ = std::make_shared<pc_sub_type>(public_nh, i_params.lidar_topic, queue_rate_);
+  image_sub_ = std::make_shared<image_sub_type>(private_nh, "image", queue_rate_);
+  pc_sub_ = std::make_shared<pc_sub_type>(private_nh, "pointcloud", queue_rate_);
   image_pc_sync_ = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(
       ImageLidarSyncPolicy(queue_rate_), *image_sub_, *pc_sub_);
   image_pc_sync_->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
@@ -307,6 +307,13 @@ FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud)
 void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& image,
                                                const PointCloud::ConstPtr& pointcloud)
 {
+  // Check if we have deduced the lidar ring count
+  if (i_params.lidar_ring_count == 0)
+  {
+    pcl::PointXYZIR min, max;
+    pcl::getMinMax3D(*pointcloud, min, max);
+    i_params.lidar_ring_count = max.ring + 1;
+  }
   PointCloud::Ptr cloud_bounded(new PointCloud);
   cam_lidar_calibration::OptimisationSample sample;
   passthrough(pointcloud, cloud_bounded);

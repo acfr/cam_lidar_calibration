@@ -701,8 +701,8 @@ Optimiser::Optimiser()
   cloud = pcl::PointCloud<pcl::PointXYZIR>::Ptr(new pcl::PointCloud<pcl::PointXYZIR>);
   cv_ptr = cv_bridge::CvImagePtr(new cv_bridge::CvImage);
 
-  message_filters::Subscriber<sensor_msgs::Image> image_sub(n, i_params.camera_topic, 5);
-  message_filters::Subscriber<sensor_msgs::PointCloud2> pcl_sub(n, i_params.lidar_topic, 5);
+  message_filters::Subscriber<sensor_msgs::Image> image_sub(n, "image", 5);
+  message_filters::Subscriber<sensor_msgs::PointCloud2> pcl_sub(n, "pointcloud", 5);
   sync = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(ImageLidarSyncPolicy(5), image_sub,
                                                                                pcl_sub);
   sync->registerCallback(boost::bind(&Optimiser::sensorInfoCB, this, _1, _2));

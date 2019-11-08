@@ -9,10 +9,8 @@ namespace cam_lidar_calibration
 {
 struct initial_parameters_t
 {
-  std::string camera_topic;
-  std::string lidar_topic;
   bool fisheye_model;
-  int lidar_ring_count;
+  int lidar_ring_count = 0;
   cv::Size chessboard_pattern_size;
   int square_length;                 // in millimetres
   cv::Size board_dimensions;         // in millimetres

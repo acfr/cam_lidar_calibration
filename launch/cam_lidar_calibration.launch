@@ -10,6 +10,8 @@
   <rosparam file="$(find cam_lidar_calibration)/cfg/params.yaml" />
 
   <node pkg="cam_lidar_calibration" type="feature_extraction" name="feature_extraction" output="screen">
+    <remap from="~image" to="/gmsl/A2/image_color" />
+    <remap from="~pointcloud" to="/velodyne/front/points" />
   </node>
 
   <node type="rviz" name="rviz" pkg="rviz" args="-d $(find cam_lidar_calibration)/rviz/cam_lidar_calibration.rviz" />

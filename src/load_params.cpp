@@ -5,10 +5,7 @@ namespace cam_lidar_calibration
 void loadParams(const ros::NodeHandle& n, initial_parameters_t& i_params)
 {
   int cb_w, cb_h, w, h, e_x, e_y, i_l, i_b;
-  n.getParam("image_topic", i_params.camera_topic);
-  n.getParam("lidar_topic", i_params.lidar_topic);
   n.getParam("fisheye_model", i_params.fisheye_model);
-  n.getParam("lidar_ring_count", i_params.lidar_ring_count);
   n.getParam("chessboard/pattern_size/width", cb_w);
   n.getParam("chessboard/pattern_size/height", cb_h);
   i_params.chessboard_pattern_size = cv::Size(cb_w, cb_h);

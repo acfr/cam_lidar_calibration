@@ -5,8 +5,6 @@ feature_extraction:
   y_max: 1.0
   z_min: -0.7
   z_max: 2.0
-image_topic: /gmsl/A2/image_color
-lidar_topic: /velodyne/front/points
 fisheye_model: true
 lidar_ring_count: 16
 chessboard:
