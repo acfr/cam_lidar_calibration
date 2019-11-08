@@ -73,26 +73,6 @@ double colmap[50][3] = { { 0, 0, 0.5385 },
                          { 0.7692, 0, 0 },
                          { 0.6923, 0, 0 } };
 
-struct CameraVelodyneCalibrationData
-{
-  std::vector<std::vector<double>> velodynenormals;
-  std::vector<std::vector<double>> velodynepoints;
-  std::vector<std::vector<double>> cameranormals;
-  std::vector<std::vector<double>> camerapoints;
-  std::vector<std::vector<double>> velodynecorners;
-  std::vector<double> pixeldata;
-
-  cv::Mat cameranormals_mat;    // nX3
-  cv::Mat camerapoints_mat;     // nX3
-  cv::Mat velodynepoints_mat;   // nX3
-  cv::Mat velodynenormals_mat;  // nX3
-  cv::Mat velodynecorners_mat;  // nX3
-  cv::Mat pixeldata_mat;        // 1X3
-
-} calibrationdata;
-
-cam_lidar_calibration::initial_parameters_t i_params;
-
 void imageProjection(RotationTranslation rot_trans);
 
 void Optimiser::init_genes2(RotationTranslation& p, const std::function<double(void)>& rnd01)
@@ -125,21 +105,23 @@ double Optimiser::rotationFitnessFunc(double e1, double e2, double e3)
   cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
                      rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
 
-  cv::Mat normals = calibrationdata.cameranormals_mat * tmp_rot.t();  // camera normals in lidar frame
-  cv::Mat normal_diff = normals - calibrationdata.velodynenormals_mat;
+  cv::Mat normals = camera_normals_ * tmp_rot.t();  // camera normals in lidar frame
+  cv::Mat normal_diff = normals - lidar_normals_;
   cv::Mat normal_square = normal_diff.mul(normal_diff);  // square the xyz components of normal_diff
   cv::Mat summed_norm_diff;
   cv::reduce(normal_square, summed_norm_diff, 1, CV_REDUCE_SUM, CV_64F);  // add the squared terms
   cv::Mat sqrt_norm_diff;
   sqrt(summed_norm_diff, sqrt_norm_diff);  // take the square root
   double sqrt_norm_sum = 0.0;
-  for (int i = 0; i < sample; i++)
+  for (int i = 0; i < samples_.size(); i++)
+  {
     sqrt_norm_sum += sqrt_norm_diff.at<double>(i);  // Add the errors involved in all the vectors
+  }
 
-  double ana = sqrt_norm_sum / sample;  // divide this sum by the total number of samples
+  double ana = sqrt_norm_sum / samples_.size();  // divide this sum by the total number of samples
 
   // vectors on the board plane (w.r.t lidar frame)
-  cv::Mat plane_vectors = calibrationdata.velodynepoints_mat - calibrationdata.velodynecorners_mat;
+  cv::Mat plane_vectors = lidar_centres_ - lidar_corners_;
   double error_dot = 0.0;
   for (int i = 0; i < sqrt_norm_diff.rows; i++)
   {
@@ -148,7 +130,7 @@ double Optimiser::rotationFitnessFunc(double e1, double e2, double e3)
     double temp_err_dot = pow(normals.row(i).dot(plane_vector), 2);
     error_dot += temp_err_dot;
   }
-  error_dot = error_dot / sample;  // dot product average
+  error_dot = error_dot / samples_.size();  // dot product average
 
   if (output)
   {
@@ -188,8 +170,8 @@ bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslation
   cv::Mat l_row = (cv::Mat_<double>(1, 4) << 0.0, 0.0, 0.0, 1.0);
   cv::hconcat(tmp_rot, translation_ana.t(), rt);
   cv::vconcat(rt, l_row, t_fin);
-  cv::hconcat(calibrationdata.velodynepoints_mat, cv::Mat::ones(sample, 1, CV_64F), vpoints);
-  cv::hconcat(calibrationdata.camerapoints_mat, cv::Mat::ones(sample, 1, CV_64F), cpoints);
+  cv::hconcat(lidar_centres_, cv::Mat::ones(samples_.size(), 1, CV_64F), vpoints);
+  cv::hconcat(camera_centres_, cv::Mat::ones(samples_.size(), 1, CV_64F), cpoints);
   cv::Mat cp_rot = t_fin.inv() * vpoints.t();
   cp_rot = cp_rot.t();
   cv::Mat trans_diff = cp_rot - cpoints;
@@ -198,11 +180,11 @@ bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslation
   cv::reduce(trans_diff, summed_norm_diff, 1, CV_REDUCE_SUM, CV_64F);
   sqrt(summed_norm_diff, sqrt_norm_diff);
   double summed_sqrt = 0.0;
-  for (int i = 0; i < sample; i++)
+  for (int i = 0; i < samples_.size(); i++)
   {
     summed_sqrt += sqrt_norm_diff.at<double>(i);
   }
-  double error_trans = summed_sqrt / sample;
+  double error_trans = summed_sqrt / samples_.size();
 
   cv::Mat meanValue, stdValue;
   cv::meanStdDev(sqrt_norm_diff, meanValue, stdValue);
@@ -211,12 +193,11 @@ bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslation
   var = stdValue.at<double>(0);
 
   std::vector<double> pixel_error;
-  for (int i = 0; i < sample; i++)
+  for (int i = 0; i < samples_.size(); i++)
   {
     double* my_cp = convertToImagePoints(cp_rot.at<double>(i, 0), cp_rot.at<double>(i, 1), cp_rot.at<double>(i, 2));
     double* my_vp = convertToImagePoints(cpoints.at<double>(i, 0), cpoints.at<double>(i, 1), cpoints.at<double>(i, 2));
-    double pix_e = sqrt(pow((my_cp[0] - my_vp[0]), 2) + pow((my_cp[1] - my_vp[1]), 2)) *
-                   calibrationdata.pixeldata_mat.at<double>(i);
+    double pix_e = sqrt(pow((my_cp[0] - my_vp[0]), 2) + pow((my_cp[1] - my_vp[1]), 2)) * pixel_errors_.at<double>(i);
     pixel_error.push_back(pix_e);
   }
 
@@ -226,13 +207,13 @@ bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslation
 
   if (output2)
   {
-    std::cout << "sample " << sample << std::endl;
+    std::cout << "samples: " << samples_.size() << std::endl;
     std::cout << "tmp_rot " << tmp_rot << std::endl;
     std::cout << "cp_rot " << cp_rot << std::endl;
     std::cout << "t_fin " << t_fin << std::endl;
     std::cout << "translation_ana " << translation_ana << std::endl;
     std::cout << "cp_rot " << cp_rot << std::endl;
-    std::cout << "calibrationdata.camerapoints_mat " << calibrationdata.camerapoints_mat << std::endl;
+    std::cout << "camera_centres " << camera_centres_ << std::endl;
     std::cout << "trans_diff " << trans_diff << std::endl;
     std::cout << "summed_norm_diff " << summed_norm_diff << std::endl;
     std::cout << "sqrt_norm_diff " << sqrt_norm_diff << std::endl;
@@ -397,30 +378,33 @@ void Optimiser::SO_report_generation(int generation_number,
 
 bool Optimiser::optimise()
 {
-  ROS_INFO("Input samples collected");
-  calibrationdata.cameranormals_mat = cv::Mat(sample, 3, CV_64F);
-  calibrationdata.camerapoints_mat = cv::Mat(sample, 3, CV_64F);
-  calibrationdata.velodynepoints_mat = cv::Mat(sample, 3, CV_64F);
-  calibrationdata.velodynenormals_mat = cv::Mat(sample, 3, CV_64F);
-  calibrationdata.velodynecorners_mat = cv::Mat(sample, 3, CV_64F);
-  calibrationdata.pixeldata_mat = cv::Mat(1, sample, CV_64F);
+  auto n = samples_.size();
+  ROS_INFO_STREAM("Optimising " << n << " collected samples");
+  camera_normals_ = cv::Mat(n, 3, CV_64F);
+  camera_centres_ = cv::Mat(n, 3, CV_64F);
+  lidar_centres_ = cv::Mat(n, 3, CV_64F);
+  lidar_normals_ = cv::Mat(n, 3, CV_64F);
+  lidar_corners_ = cv::Mat(n, 3, CV_64F);
+  pixel_errors_ = cv::Mat(1, n, CV_64F);
 
   // Insert vector elements into cv::Mat for easy matrix operation
-  for (int i = 0; i < sample; i++)
+  int row = 0;
+  for (auto& sample : samples_)
   {
-    for (int j = 0; j < 3; j++)
-    {
-      calibrationdata.camerapoints_mat.at<double>(i, j) = calibrationdata.camerapoints[i][j];
-      calibrationdata.cameranormals_mat.at<double>(i, j) = calibrationdata.cameranormals[i][j];
-      calibrationdata.velodynepoints_mat.at<double>(i, j) = calibrationdata.velodynepoints[i][j];
-      calibrationdata.velodynenormals_mat.at<double>(i, j) = calibrationdata.velodynenormals[i][j];
-      calibrationdata.velodynecorners_mat.at<double>(i, j) = calibrationdata.velodynecorners[i][j];
-    }
-    calibrationdata.pixeldata_mat.at<double>(i) = calibrationdata.pixeldata[i];
+    cv::Mat cn = cv::Mat(sample.camera_normal).reshape(1).t();
+    cn.copyTo(camera_normals_.row(row));
+    cv::Mat cc = cv::Mat(sample.camera_centre).reshape(1).t();
+    cc.copyTo(camera_centres_.row(row));
+    cv::Mat ln = cv::Mat(sample.lidar_normal).reshape(1).t();
+    ln.copyTo(lidar_normals_.row(row));
+    cv::Mat lc = cv::Mat(sample.lidar_centre).reshape(1).t();
+    lc.copyTo(lidar_centres_.row(row));
+    cv::Mat l_cn = cv::Mat(sample.lidar_corner).reshape(1).t();
+    l_cn.copyTo(lidar_corners_.row(row));
+    row++;
   }
-
-  cv::Mat NN = calibrationdata.cameranormals_mat.t() * calibrationdata.cameranormals_mat;
-  cv::Mat NM = calibrationdata.cameranormals_mat.t() * calibrationdata.velodynenormals_mat;
+  cv::Mat NN = camera_normals_.t() * camera_normals_;
+  cv::Mat NM = camera_normals_.t() * lidar_normals_;
   cv::Mat UNR = (NN.inv() * NM).t();  // Analytical rotation matrix for real data
   ROS_INFO_STREAM("Analytical rotation matrix " << UNR);
   std::vector<double> euler;
@@ -464,8 +448,8 @@ bool Optimiser::optimise()
   cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
                      rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
   // Analytical Translation
-  cv::Mat cp_trans = tmp_rot * calibrationdata.camerapoints_mat.t();
-  cv::Mat trans_diff = calibrationdata.velodynepoints_mat.t() - cp_trans;
+  cv::Mat cp_trans = tmp_rot * camera_centres_.t();
+  cv::Mat trans_diff = lidar_centres_.t() - cp_trans;
   cv::Mat summed_diff;
   cv::reduce(trans_diff, summed_diff, 1, CV_REDUCE_SUM, CV_64F);
   summed_diff = summed_diff / trans_diff.cols;

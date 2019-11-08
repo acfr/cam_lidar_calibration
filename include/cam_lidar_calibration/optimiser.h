@@ -93,9 +93,17 @@ private:
   void imageProjection(RotationTranslation rot_trans);
   void sensorInfoCB(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc);
 
+  cv::Mat camera_normals_;
+  cv::Mat camera_centres_;
+  cv::Mat lidar_centres_;
+  cv::Mat lidar_normals_;
+  cv::Mat lidar_corners_;
+  cv::Mat pixel_errors_;
+
   Rotation eul;
   RotationTranslation eul_t, eul_it;
-  int sample = 0;
+  initial_parameters_t i_params;
+
   bool sensor_pair = 0;
   bool output = 0;
   bool output2 = 0;
