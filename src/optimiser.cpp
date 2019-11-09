@@ -1,24 +1,13 @@
 #include "cam_lidar_calibration/point_xyzir.h"
-#include <pcl/point_cloud.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/kdtree/impl/kdtree_flann.hpp>
 
 #include <opencv/cv.hpp>
 
 #include <ros/ros.h>
 
-#include <cv_bridge/cv_bridge.h>
-#include <image_transport/image_transport.h>
-#include <message_filters/subscriber.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/transforms.h>
-#include <std_msgs/Int8.h>
 #include <tf/transform_datatypes.h>
 
 #include "cam_lidar_calibration/calibration_data.h"
 #include "cam_lidar_calibration/load_params.h"
-#include <cam_lidar_calibration/Sample.h>
-
 #include "cam_lidar_calibration/optimiser.h"
 
 namespace cam_lidar_calibration
@@ -495,9 +484,6 @@ bool Optimiser::optimise()
     ex_it.push_back(eul_it.y);
     ex_it.push_back(eul_it.z);
     extrinsics.push_back(ex_it);
-    //      std::cout << "Extrinsics for iteration" << i << " " << extrinsics[i][0] << " " << extrinsics[i][1] << " "
-    //      << extrinsics[i][2]
-    //                << " " << extrinsics[i][3] << " " << extrinsics[i][4] << " " << extrinsics[i][5] << std::endl;
   }
   // Perform the average operation
   double e_x = 0.0;
@@ -528,7 +514,6 @@ bool Optimiser::optimise()
                   << rot_trans.y << " " << rot_trans.z);
   ROS_INFO_STREAM("The problem was optimised in " << timer.toc() << " seconds");
 
-  imageProjection(rot_trans);  // Project the pointcloud on the image with the obtained extrinsics
   return true;
 }
 
@@ -584,79 +569,7 @@ double* Optimiser::convertToImagePoints(double x, double y, double z)
 
   return img_coord;
 }
-
-void Optimiser::sensorInfoCB(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc)
-{
-  if (!sensor_pair)  // Take the first synchronized camera-lidar pair from the input
-  {
-    cv_bridge::CvImagePtr cv_ptr;
-    try
-    {
-      cv_ptr = cv_bridge::toCvCopy(img, "bgr8");
-    }
-    catch (cv_bridge::Exception& e)
-    {
-      return;
-    }
-    raw_image = cv_ptr->image;
-
-    pcl::fromROSMsg(*pc, *cloud);
-    sensor_pair = 1;
-  }
-}
-
-void Optimiser::imageProjection(RotationTranslation rot_trans)
-{
-  cv::Mat new_image_raw;
-  new_image_raw = raw_image.clone();
-
-  // Extrinsic parameter: Transform Velodyne -> cameras
-  tf::Matrix3x3 rot;
-  rot.setRPY(rot_trans.e1, rot_trans.e2, rot_trans.e3);
-
-  Eigen::MatrixXf t1(4, 4), t2(4, 4);
-  t1 << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot_trans.x, rot.getRow(1)[0], rot.getRow(1)[1],
-      rot.getRow(1)[2], rot_trans.y, rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2], rot_trans.z, 0, 0, 0, 1;
-  t2 = t1.inverse();
-
-  Eigen::Affine3f transform_A = Eigen::Affine3f::Identity();
-  transform_A.matrix() << t2(0, 0), t2(0, 1), t2(0, 2), t2(0, 3), t2(1, 0), t2(1, 1), t2(1, 2), t2(1, 3), t2(2, 0),
-      t2(2, 1), t2(2, 2), t2(2, 3), t2(3, 0), t2(3, 1), t2(3, 2), t2(3, 3);
-
-  if (cloud->size() < 1)
-    return;
-
-  pcl::PointCloud<pcl::PointXYZIR> organized;
-  organized = organizedPointcloud(cloud);
-
-  for (pcl::PointCloud<pcl::PointXYZIR>::const_iterator it = organized.begin(); it != organized.end(); it++)
-  {
-    pcl::PointXYZIR itA;
-    itA = pcl::transformPoint(*it, transform_A);
-    if (itA.z < 0 or std::abs(itA.x / itA.z) > 1.2)
-      continue;
-
-    double* img_pts = convertToImagePoints(itA.x, itA.y, itA.z);
-    double length = sqrt(pow(itA.x, 2) + pow(itA.y, 2) + pow(itA.z, 2));  // range of every point
-    int color = std::min(round((length / 30) * 49), 49.0);
-
-    if (img_pts[1] >= 0 and img_pts[1] < i_params.image_size.second and img_pts[0] >= 0 and
-        img_pts[0] < i_params.image_size.first)
-    {
-      cv::circle(new_image_raw, cv::Point(img_pts[0], img_pts[1]), 3,
-                 CV_RGB(255 * colmap[color][0], 255 * colmap[color][1], 255 * colmap[color][2]), -1);
-    }
-  }
-
-  // Publish the image projection
-  ros::Time time = ros::Time::now();
-  cv_ptr->encoding = "bgr8";
-  cv_ptr->header.stamp = time;
-  cv_ptr->header.frame_id = "/traj_output";
-  cv_ptr->image = new_image_raw;
-  pub_img_dist.publish(cv_ptr->toImageMsg());
-}
-
+/*
 pcl::PointCloud<pcl::PointXYZIR> organizedPointcloud(pcl::PointCloud<pcl::PointXYZIR>::Ptr input_pointcloud)
 {
   pcl::PointCloud<pcl::PointXYZIR> organized_pc;
@@ -692,22 +605,11 @@ pcl::PointCloud<pcl::PointXYZIR> organizedPointcloud(pcl::PointCloud<pcl::PointX
   // Return sorted point cloud
   return (organized_pc);
 }
-
+*/
 Optimiser::Optimiser()
 {
   ros::NodeHandle n;
 
   loadParams(n, i_params);
-  cloud = pcl::PointCloud<pcl::PointXYZIR>::Ptr(new pcl::PointCloud<pcl::PointXYZIR>);
-  cv_ptr = cv_bridge::CvImagePtr(new cv_bridge::CvImage);
-
-  message_filters::Subscriber<sensor_msgs::Image> image_sub(n, "image", 5);
-  message_filters::Subscriber<sensor_msgs::PointCloud2> pcl_sub(n, "pointcloud", 5);
-  sync = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(ImageLidarSyncPolicy(5), image_sub,
-                                                                               pcl_sub);
-  sync->registerCallback(boost::bind(&Optimiser::sensorInfoCB, this, _1, _2));
-
-  image_transport::ImageTransport it(n);
-  pub_img_dist = it.advertise("image_projection", 20);
 }
 }  // namespace cam_lidar_calibration

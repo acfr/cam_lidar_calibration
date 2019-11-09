@@ -15,9 +15,12 @@
 
 #include <opencv2/calib3d.hpp>
 
+#include <Eigen/Geometry>
+
 #include <cv_bridge/cv_bridge.h>
 #include <pcl_ros/point_cloud.h>
 #include <sensor_msgs/image_encodings.h>
+#include <visualization_msgs/MarkerArray.h>
 
 #include "cam_lidar_calibration/feature_extractor.h"
 
@@ -34,10 +37,16 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "FeatureExtractor");
   ros::NodeHandle n;
 
-  cam_lidar_calibration::FeatureExtractor FeatureExtractor;
-  FeatureExtractor.bypassInit();
-  ros::spin();
+  cam_lidar_calibration::FeatureExtractor feature_extractor;
+  feature_extractor.bypassInit();
+  ros::Rate loop_rate(10);
 
+  while (ros::ok())
+  {
+    feature_extractor.visualiseSamples();
+    ros::spinOnce();
+    loop_rate.sleep();
+  }
   return 0;
 }
 
@@ -68,12 +77,10 @@ void FeatureExtractor::onInit()
       ImageLidarSyncPolicy(queue_rate_), *image_sub_, *pc_sub_);
   image_pc_sync_->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
 
-  roi_publisher = public_nh.advertise<cam_lidar_calibration::calibration_data>("roi/points", 10, true);
-  pub_cloud = public_nh.advertise<PointCloud>("velodyne_features", 1);
-  expt_region = public_nh.advertise<PointCloud>("Experimental_region", 10);
+  board_cloud_pub_ = private_nh.advertise<PointCloud>("chessboard", 1);
+  bounded_cloud_pub_ = private_nh.advertise<PointCloud>("experimental_region", 10);
   optimise_service_ = public_nh.advertiseService("optimiser", &FeatureExtractor::serviceCB, this);
-  vis_pub = public_nh.advertise<visualization_msgs::Marker>("visualization_marker", 0);
-  visPub = public_nh.advertise<visualization_msgs::Marker>("board_corners_3d", 0);
+  samples_pub_ = private_nh.advertise<visualization_msgs::MarkerArray>("collected_samples", 0);
   image_publisher = it_->advertise("camera_features", 1);
   NODELET_INFO_STREAM("Camera Lidar Calibration");
 }
@@ -108,6 +115,236 @@ void FeatureExtractor::boundsCB(cam_lidar_calibration::boundsConfig& config, uin
   bounds_ = config;
   ROS_INFO("Reconfigure Request: %lf %lf %lf %lf %lf %lf", config.x_min, config.x_max, config.y_min, config.y_max,
            config.z_min, config.z_max);
+}
+
+geometry_msgs::Quaternion normalToQuaternion(const cv::Point3d& normal)
+{
+  // Convert to Eigen vector
+  Eigen::Vector3d eigen_normal(normal.x, normal.y, normal.z);
+  Eigen::Vector3d axis(1, 0, 0);
+  auto eigen_quat = Eigen::Quaterniond::FromTwoVectors(axis, eigen_normal);
+  geometry_msgs::Quaternion quat;
+  quat.w = eigen_quat.w();
+  quat.x = eigen_quat.x();
+  quat.y = eigen_quat.y();
+  quat.z = eigen_quat.z();
+  return quat;
+}
+
+void FeatureExtractor::visualiseSamples()
+{
+  visualization_msgs::MarkerArray vis_array;
+
+  int id = 1;
+  for (auto& sample : optimiser_.samples_)
+  {
+    visualization_msgs::Marker clear, lidar_board, lidar_normal;
+
+    clear.action = visualization_msgs::Marker::DELETEALL;
+    vis_array.markers.push_back(clear);
+
+    lidar_board.header.frame_id = lidar_normal.header.frame_id = lidar_frame_;
+    lidar_board.action = lidar_normal.action = visualization_msgs::Marker::ADD;
+    lidar_board.type = visualization_msgs::Marker::SPHERE;
+    lidar_normal.type = visualization_msgs::Marker::ARROW;
+
+    lidar_normal.scale.x = 0.5;
+    lidar_normal.scale.y = 0.04;
+    lidar_normal.scale.z = 0.04;
+    lidar_normal.color.a = 1.0;
+    lidar_normal.color.b = 1.0;
+    lidar_normal.color.g = 0.0;
+    lidar_normal.color.r = 0.0;
+    lidar_normal.pose.position.x = sample.lidar_centre.x / 1000;
+    lidar_normal.pose.position.y = sample.lidar_centre.y / 1000;
+    lidar_normal.pose.position.z = sample.lidar_centre.z / 1000;
+    lidar_normal.pose.orientation = normalToQuaternion(sample.lidar_normal);
+    lidar_normal.id = id++;
+
+    vis_array.markers.push_back(lidar_normal);
+
+    lidar_board.scale.x = 0.04;
+    lidar_board.scale.y = 0.04;
+    lidar_board.scale.z = 0.04;
+    lidar_board.color.a = 1.0;
+    lidar_board.color.b = 0.0;
+    lidar_board.color.g = 1.0;
+    lidar_board.color.r = 0.0;
+    lidar_board.pose.orientation.w = 1.0;
+    for (auto& c : sample.lidar_corners)
+    {
+      lidar_board.pose.position.x = c.x;
+      lidar_board.pose.position.y = c.y;
+      lidar_board.pose.position.z = c.z;
+      lidar_board.id = id++;
+      vis_array.markers.push_back(lidar_board);
+    }
+  }
+  samples_pub_.publish(vis_array);
+
+  // Visualize 4 corner points of velodyne board, the board edge lines and the centre point
+  /*
+  marker1.header.frame_id = line_strip.header.frame_id = corners_board.header.frame_id = "/velodyne_front_link";
+  marker1.header.stamp = line_strip.header.stamp = corners_board.header.stamp = ros::Time();
+  marker1.ns = line_strip.ns = corners_board.ns = "my_sphere";
+  line_strip.id = 10;
+  marker1.id = 11;
+  marker1.type = visualization_msgs::Marker::POINTS;
+  line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+  corners_board.type = visualization_msgs::Marker::SPHERE;
+  marker1.action = line_strip.action = corners_board.action = visualization_msgs::Marker::ADD;
+  marker1.pose.orientation.w = line_strip.pose.orientation.w = corners_board.pose.orientation.w = 1.0;
+  marker1.scale.x = 0.02;
+  marker1.scale.y = 0.02;
+  corners_board.scale.x = 0.04;
+  corners_board.scale.y = 0.04;
+  corners_board.scale.z = 0.04;
+  line_strip.scale.x = 0.009;
+  marker1.color.a = line_strip.color.a = corners_board.color.a = 1.0;
+  line_strip.color.b = 1.0;
+  marker1.color.b = marker1.color.g = marker1.color.r = 1.0;
+
+  for (int i = 0; i < 5; i++)
+  {
+    if (i < 4)
+    {
+      corners_board.pose.position.x = basic_cloud_ptr->points[i].x;
+      corners_board.pose.position.y = basic_cloud_ptr->points[i].y;
+      corners_board.pose.position.z = basic_cloud_ptr->points[i].z;
+    }
+    else
+    {
+      corners_board.pose.position.x = sample.lidar_centre.x / 1000;
+      corners_board.pose.position.y = sample.lidar_centre.y / 1000;
+      corners_board.pose.position.z = sample.lidar_centre.z / 1000;
+    }
+
+    corners_board.id = i;
+    if (corners_board.id == 0)
+      corners_board.color.b = 1.0;
+    else if (corners_board.id == 1)
+    {
+      corners_board.color.b = 0.0;
+      corners_board.color.g = 1.0;
+    }
+    else if (corners_board.id == 2)
+    {
+      corners_board.color.b = 0.0;
+      corners_board.color.g = 0.0;
+      corners_board.color.r = 1.0;
+    }
+    else if (corners_board.id == 3)
+    {
+      corners_board.color.b = 0.0;
+      corners_board.color.r = 1.0;
+      corners_board.color.g = 1.0;
+    }
+    else if (corners_board.id == 4)
+    {
+      corners_board.color.b = 1.0;
+      corners_board.color.r = 1.0;
+      corners_board.color.g = 1.0;
+    }
+    visPub.publish(corners_board);
+  }
+
+  // Visualize minimum and maximum points
+  visualization_msgs::Marker minmax;
+  minmax.header.frame_id = "/velodyne_front_link";
+  minmax.header.stamp = ros::Time();
+  minmax.ns = "my_sphere";
+  minmax.type = visualization_msgs::Marker::SPHERE;
+  minmax.action = visualization_msgs::Marker::ADD;
+  minmax.pose.orientation.w = 1.0;
+  minmax.scale.x = 0.02;
+  minmax.scale.y = 0.02;
+  minmax.scale.z = 0.02;
+  minmax.color.a = 1.0;  // Don't forget to set the alpha!
+  size_t y_min_pts = 0;
+  for (y_min_pts = 0; y_min_pts < min_points->points.size(); y_min_pts++)
+  {
+    minmax.id = y_min_pts + 13;
+    minmax.pose.position.x = min_points->points[y_min_pts].x;
+    minmax.pose.position.y = min_points->points[y_min_pts].y;
+    minmax.pose.position.z = min_points->points[y_min_pts].z;
+    minmax.color.b = 1.0;
+    minmax.color.r = 1.0;
+    minmax.color.g = 0.0;
+    visPub.publish(minmax);
+  }
+  for (size_t y_max_pts = 0; y_max_pts < max_points->points.size(); y_max_pts++)
+  {
+    minmax.id = y_min_pts + 13 + y_max_pts;
+    minmax.pose.position.x = max_points->points[y_max_pts].x;
+    minmax.pose.position.y = max_points->points[y_max_pts].y;
+    minmax.pose.position.z = max_points->points[y_max_pts].z;
+    minmax.color.r = 0.0;
+    minmax.color.g = 1.0;
+    minmax.color.b = 1.0;
+    visPub.publish(minmax);
+  }
+  // Draw board edge lines
+  for (int i = 0; i < 2; i++)
+  {
+    geometry_msgs::Point p;
+    p.x = basic_cloud_ptr->points[1 - i].x;
+    p.y = basic_cloud_ptr->points[1 - i].y;
+    p.z = basic_cloud_ptr->points[1 - i].z;
+    marker1.points.push_back(p);
+    line_strip.points.push_back(p);
+    p.x = basic_cloud_ptr->points[3 - i].x;
+    p.y = basic_cloud_ptr->points[3 - i].y;
+    p.z = basic_cloud_ptr->points[3 - i].z;
+    marker1.points.push_back(p);
+    line_strip.points.push_back(p);
+  }
+
+  geometry_msgs::Point p;
+  p.x = basic_cloud_ptr->points[1].x;
+  p.y = basic_cloud_ptr->points[1].y;
+  p.z = basic_cloud_ptr->points[1].z;
+  marker1.points.push_back(p);
+  line_strip.points.push_back(p);
+  p.x = basic_cloud_ptr->points[0].x;
+  p.y = basic_cloud_ptr->points[0].y;
+  p.z = basic_cloud_ptr->points[0].z;
+  marker1.points.push_back(p);
+  line_strip.points.push_back(p);
+
+  // Publish board edges
+  visPub.publish(line_strip);
+
+  // Visualize board normal vector
+  marker.header.frame_id = "/velodyne_front_link";
+  marker.header.stamp = ros::Time();
+  marker.ns = "my_namespace";
+  marker.id = 12;
+  marker.type = visualization_msgs::Marker::ARROW;
+  marker.action = visualization_msgs::Marker::ADD;
+  marker.scale.x = 0.02;
+  marker.scale.y = 0.04;
+  marker.scale.z = 0.06;
+  marker.color.a = 1.0;
+  marker.color.r = 0.0;
+  marker.color.g = 0.0;
+  marker.color.b = 1.0;
+  geometry_msgs::Point start, end;
+  start.x = sample.lidar_centre.x / 1000;
+  start.y = sample.lidar_centre.y / 1000;
+  start.z = sample.lidar_centre.z / 1000;
+  end.x = start.x + sample.lidar_normal.x / 2;
+  end.y = start.y + sample.lidar_normal.y / 2;
+  end.z = start.z + sample.lidar_normal.z / 2;
+  marker.points.resize(2);
+  marker.points[0].x = start.x;
+  marker.points[0].y = start.y;
+  marker.points[0].z = start.z;
+  marker.points[1].x = end.x;
+  marker.points[1].y = end.y;
+  marker.points[1].z = end.z;
+  // Publish Board normal
+  samples_pub_.publish(marker);
+  */
 }
 
 void FeatureExtractor::passthrough(const PointCloud::ConstPtr& input_pc, PointCloud::Ptr& output_pc)
@@ -299,7 +536,7 @@ FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud)
   proj.filter(*cloud_projected);
 
   // Publish the projected inliers
-  pub_cloud.publish(cloud_projected);
+  board_cloud_pub_.publish(cloud_projected);
   return std::make_optional(std::make_tuple(cloud_projected, lidar_normal));
 }
 
@@ -313,13 +550,14 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     pcl::PointXYZIR min, max;
     pcl::getMinMax3D(*pointcloud, min, max);
     i_params.lidar_ring_count = max.ring + 1;
+    lidar_frame_ = pointcloud->header.frame_id;
   }
   PointCloud::Ptr cloud_bounded(new PointCloud);
   cam_lidar_calibration::OptimisationSample sample;
   passthrough(pointcloud, cloud_bounded);
 
   // Publish the experimental region point cloud
-  expt_region.publish(cloud_bounded);
+  bounded_cloud_pub_.publish(cloud_bounded);
 
   if (flag == Optimise::Request::CAPTURE)
   {
@@ -527,168 +765,11 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     sample.lidar_corner.y = basic_cloud_ptr->points[2].y;
     sample.lidar_corner.z = basic_cloud_ptr->points[2].z;
 
-    // Visualize 4 corner points of velodyne board, the board edge lines and the centre point
-    visualization_msgs::Marker marker1, line_strip, corners_board;
-    marker1.header.frame_id = line_strip.header.frame_id = corners_board.header.frame_id = "/velodyne_front_link";
-    marker1.header.stamp = line_strip.header.stamp = corners_board.header.stamp = ros::Time();
-    marker1.ns = line_strip.ns = corners_board.ns = "my_sphere";
-    line_strip.id = 10;
-    marker1.id = 11;
-    marker1.type = visualization_msgs::Marker::POINTS;
-    line_strip.type = visualization_msgs::Marker::LINE_STRIP;
-    corners_board.type = visualization_msgs::Marker::SPHERE;
-    marker1.action = line_strip.action = corners_board.action = visualization_msgs::Marker::ADD;
-    marker1.pose.orientation.w = line_strip.pose.orientation.w = corners_board.pose.orientation.w = 1.0;
-    marker1.scale.x = 0.02;
-    marker1.scale.y = 0.02;
-    corners_board.scale.x = 0.04;
-    corners_board.scale.y = 0.04;
-    corners_board.scale.z = 0.04;
-    line_strip.scale.x = 0.009;
-    marker1.color.a = line_strip.color.a = corners_board.color.a = 1.0;
-    line_strip.color.b = 1.0;
-    marker1.color.b = marker1.color.g = marker1.color.r = 1.0;
-
-    for (int i = 0; i < 5; i++)
+    for (auto& pt : basic_cloud_ptr->points)
     {
-      if (i < 4)
-      {
-        corners_board.pose.position.x = basic_cloud_ptr->points[i].x;
-        corners_board.pose.position.y = basic_cloud_ptr->points[i].y;
-        corners_board.pose.position.z = basic_cloud_ptr->points[i].z;
-      }
-      else
-      {
-        corners_board.pose.position.x = sample.lidar_centre.x / 1000;
-        corners_board.pose.position.y = sample.lidar_centre.y / 1000;
-        corners_board.pose.position.z = sample.lidar_centre.z / 1000;
-      }
-
-      corners_board.id = i;
-      if (corners_board.id == 0)
-        corners_board.color.b = 1.0;
-      else if (corners_board.id == 1)
-      {
-        corners_board.color.b = 0.0;
-        corners_board.color.g = 1.0;
-      }
-      else if (corners_board.id == 2)
-      {
-        corners_board.color.b = 0.0;
-        corners_board.color.g = 0.0;
-        corners_board.color.r = 1.0;
-      }
-      else if (corners_board.id == 3)
-      {
-        corners_board.color.b = 0.0;
-        corners_board.color.r = 1.0;
-        corners_board.color.g = 1.0;
-      }
-      else if (corners_board.id == 4)
-      {
-        corners_board.color.b = 1.0;
-        corners_board.color.r = 1.0;
-        corners_board.color.g = 1.0;
-      }
-      visPub.publish(corners_board);
+      cv::Point3d p(pt.x, pt.y, pt.z);
+      sample.lidar_corners.push_back(p);
     }
-
-    // Visualize minimum and maximum points
-    visualization_msgs::Marker minmax;
-    minmax.header.frame_id = "/velodyne_front_link";
-    minmax.header.stamp = ros::Time();
-    minmax.ns = "my_sphere";
-    minmax.type = visualization_msgs::Marker::SPHERE;
-    minmax.action = visualization_msgs::Marker::ADD;
-    minmax.pose.orientation.w = 1.0;
-    minmax.scale.x = 0.02;
-    minmax.scale.y = 0.02;
-    minmax.scale.z = 0.02;
-    minmax.color.a = 1.0;  // Don't forget to set the alpha!
-    size_t y_min_pts = 0;
-    for (y_min_pts = 0; y_min_pts < min_points->points.size(); y_min_pts++)
-    {
-      minmax.id = y_min_pts + 13;
-      minmax.pose.position.x = min_points->points[y_min_pts].x;
-      minmax.pose.position.y = min_points->points[y_min_pts].y;
-      minmax.pose.position.z = min_points->points[y_min_pts].z;
-      minmax.color.b = 1.0;
-      minmax.color.r = 1.0;
-      minmax.color.g = 0.0;
-      visPub.publish(minmax);
-    }
-    for (size_t y_max_pts = 0; y_max_pts < max_points->points.size(); y_max_pts++)
-    {
-      minmax.id = y_min_pts + 13 + y_max_pts;
-      minmax.pose.position.x = max_points->points[y_max_pts].x;
-      minmax.pose.position.y = max_points->points[y_max_pts].y;
-      minmax.pose.position.z = max_points->points[y_max_pts].z;
-      minmax.color.r = 0.0;
-      minmax.color.g = 1.0;
-      minmax.color.b = 1.0;
-      visPub.publish(minmax);
-    }
-    // Draw board edge lines
-    for (int i = 0; i < 2; i++)
-    {
-      geometry_msgs::Point p;
-      p.x = basic_cloud_ptr->points[1 - i].x;
-      p.y = basic_cloud_ptr->points[1 - i].y;
-      p.z = basic_cloud_ptr->points[1 - i].z;
-      marker1.points.push_back(p);
-      line_strip.points.push_back(p);
-      p.x = basic_cloud_ptr->points[3 - i].x;
-      p.y = basic_cloud_ptr->points[3 - i].y;
-      p.z = basic_cloud_ptr->points[3 - i].z;
-      marker1.points.push_back(p);
-      line_strip.points.push_back(p);
-    }
-
-    geometry_msgs::Point p;
-    p.x = basic_cloud_ptr->points[1].x;
-    p.y = basic_cloud_ptr->points[1].y;
-    p.z = basic_cloud_ptr->points[1].z;
-    marker1.points.push_back(p);
-    line_strip.points.push_back(p);
-    p.x = basic_cloud_ptr->points[0].x;
-    p.y = basic_cloud_ptr->points[0].y;
-    p.z = basic_cloud_ptr->points[0].z;
-    marker1.points.push_back(p);
-    line_strip.points.push_back(p);
-
-    // Publish board edges
-    visPub.publish(line_strip);
-
-    // Visualize board normal vector
-    marker.header.frame_id = "/velodyne_front_link";
-    marker.header.stamp = ros::Time();
-    marker.ns = "my_namespace";
-    marker.id = 12;
-    marker.type = visualization_msgs::Marker::ARROW;
-    marker.action = visualization_msgs::Marker::ADD;
-    marker.scale.x = 0.02;
-    marker.scale.y = 0.04;
-    marker.scale.z = 0.06;
-    marker.color.a = 1.0;
-    marker.color.r = 0.0;
-    marker.color.g = 0.0;
-    marker.color.b = 1.0;
-    geometry_msgs::Point start, end;
-    start.x = sample.lidar_centre.x / 1000;
-    start.y = sample.lidar_centre.y / 1000;
-    start.z = sample.lidar_centre.z / 1000;
-    end.x = start.x + sample.lidar_normal.x / 2;
-    end.y = start.y + sample.lidar_normal.y / 2;
-    end.z = start.z + sample.lidar_normal.z / 2;
-    marker.points.resize(2);
-    marker.points[0].x = start.x;
-    marker.points[0].y = start.y;
-    marker.points[0].z = start.z;
-    marker.points[1].x = end.x;
-    marker.points[1].y = end.y;
-    marker.points[1].z = end.z;
-    // Publish Board normal
-    vis_pub.publish(marker);
 
     // Push this sample to the optimiser
     optimiser_.samples_.push_back(sample);

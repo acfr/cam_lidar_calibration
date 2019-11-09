@@ -8,7 +8,6 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <std_msgs/Int8.h>
-#include <visualization_msgs/Marker.h>
 
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/persistence.hpp>
@@ -25,6 +24,8 @@ typedef message_filters::Subscriber<pcl::PointCloud<pcl::PointXYZIR>> pc_sub_typ
 
 namespace cam_lidar_calibration
 {
+geometry_msgs::Quaternion normalToQuaternion(const cv::Point3d& normal);
+
 class FeatureExtractor : public nodelet::Nodelet
 {
 public:
@@ -35,6 +36,8 @@ public:
                                const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& pc);
   bool serviceCB(Optimise::Request& req, Optimise::Response& res);
   void boundsCB(boundsConfig& config, uint32_t level);
+
+  void visualiseSamples();
 
   void bypassInit()
   {
@@ -55,11 +58,9 @@ private:
 
   Optimiser optimiser_;
   initial_parameters_t i_params;
-  std::string pkg_loc;
   int cb_l, cb_b, l, b, e_l, e_b;
+  std::string lidar_frame_;
 
-  ros::Publisher pub;
-  cv::FileStorage fs;
   int flag = 0;
   cam_lidar_calibration::boundsConfig bounds_;
 
@@ -70,13 +71,11 @@ private:
   std::shared_ptr<message_filters::Synchronizer<ImageLidarSyncPolicy>> image_pc_sync_;
   int queue_rate_ = 5;
 
-  ros::Publisher roi_publisher;
-  ros::Publisher pub_cloud, expt_region;
-  ros::Publisher vis_pub, visPub;
+  ros::Publisher board_cloud_pub_, bounded_cloud_pub_;
+  ros::Publisher samples_pub_;
   image_transport::Publisher image_publisher;
   ros::ServiceServer optimise_service_;
 
-  visualization_msgs::Marker marker;
   boost::shared_ptr<image_transport::ImageTransport> it_;
   boost::shared_ptr<image_transport::ImageTransport> it_p_;
   boost::shared_ptr<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>> server;

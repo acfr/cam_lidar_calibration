@@ -3,10 +3,6 @@
 
 #include "cam_lidar_calibration/openga.h"
 
-#include <message_filters/synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <sensor_msgs/PointCloud2.h>
-
 namespace cam_lidar_calibration
 {
 struct Rotation
@@ -50,9 +46,11 @@ struct OptimisationSample
 {
   cv::Point3d camera_centre;
   cv::Point3d camera_normal;
+  std::vector<cv::Point3d> camera_corners;
   cv::Point3d lidar_centre;
   cv::Point3d lidar_normal;
   cv::Point3d lidar_corner;
+  std::vector<cv::Point3d> lidar_corners;
 };
 
 typedef EA::Genetic<Rotation, RotationCost> GA_Type;
@@ -90,9 +88,6 @@ private:
   double* convertToImagePoints(double x, double y, double z);
   double rotationFitnessFunc(double e1, double e2, double e3);
 
-  void imageProjection(RotationTranslation rot_trans);
-  void sensorInfoCB(const sensor_msgs::Image::ConstPtr& img, const sensor_msgs::PointCloud2::ConstPtr& pc);
-
   cv::Mat camera_normals_;
   cv::Mat camera_centres_;
   cv::Mat lidar_centres_;
@@ -108,19 +103,10 @@ private:
   bool output = 0;
   bool output2 = 0;
   static cv::Mat new_K;
-  cv::Mat raw_image, undist_image;
-  pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud;
-  image_transport::Publisher pub_img_dist;
-  cv_bridge::CvImagePtr cv_ptr;
-
-  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::PointCloud2>
-      ImageLidarSyncPolicy;
-  std::shared_ptr<message_filters::Synchronizer<ImageLidarSyncPolicy>> sync;
   ros::Subscriber calibdata_sub_;
 };
 
 std::vector<double> rotm2eul(cv::Mat);
-pcl::PointCloud<pcl::PointXYZIR> organizedPointcloud(pcl::PointCloud<pcl::PointXYZIR>::Ptr input_pointcloud);
 
 }  // namespace cam_lidar_calibration
 
