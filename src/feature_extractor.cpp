@@ -575,8 +575,6 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     sample.camera_centre = corner_vectors[4];  // Centre of board
     sample.camera_normal = cv::Point3d(chessboard_normal);
 
-    //////////////// POINT CLOUD FEATURES //////////////////
-
     // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
     auto chessboard_lidar = extractBoard(cloud_bounded);
     if (!chessboard_lidar)
@@ -587,60 +585,30 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     sample.lidar_normal = lidar_normal;
 
     // First: Sort out the points in the point cloud according to their ring numbers
-    std::vector<std::deque<pcl::PointXYZIR*>> candidate_segments(i_params.lidar_ring_count);
+    std::vector<PointCloud> ring_pointclouds(i_params.lidar_ring_count);
 
-    double x_projected = 0;
-    double y_projected = 0;
-    double z_projected = 0;
-    for (auto& point : cloud_projected->points)
+    for (const auto& point : cloud_projected->points)
     {
-      x_projected += point.x;
-      y_projected += point.y;
-      z_projected += point.z;
-
-      int ring_number = static_cast<int>(point.ring);
-
-      // push back the points in a particular ring number
-      candidate_segments[ring_number].push_back(&(point));
+      ring_pointclouds[point.ring].push_back(point);
     }
 
     // Second: Arrange points in every ring in descending order of y coordinate
-    pcl::PointXYZIR max, min;
-    PointCloud::Ptr max_points(new PointCloud);
-    PointCloud::Ptr min_points(new PointCloud);
-    for (int i = 0; static_cast<size_t>(i) < candidate_segments.size(); i++)
+    for (auto& ring : ring_pointclouds)
     {
-      if (candidate_segments[i].size() == 0)  // If no points belong to a aprticular ring number
-      {
-        continue;
-      }
-      for (size_t j = 0; j < candidate_segments[i].size(); j++)
-      {
-        for (size_t k = j + 1; k < candidate_segments[i].size(); k++)
-        {
-          // If there is a larger element found on right of the point, swap
-          if (candidate_segments[i][j]->y < candidate_segments[i][k]->y)
-          {
-            pcl::PointXYZIR temp;
-            temp = *candidate_segments[i][k];
-            *candidate_segments[i][k] = *candidate_segments[i][j];
-            *candidate_segments[i][j] = temp;
-          }
-        }
-      }
+      std::sort(ring.begin(), ring.end(), [](pcl::PointXYZIR p1, pcl::PointXYZIR p2) { return p1.y > p2.y; });
     }
 
     // Third: Find minimum and maximum points in a ring
-    for (int i = 0; static_cast<size_t>(i) < candidate_segments.size(); i++)
+    PointCloud::Ptr max_points(new PointCloud);
+    PointCloud::Ptr min_points(new PointCloud);
+    for (const auto& ring : ring_pointclouds)
     {
-      if (candidate_segments[i].size() == 0)
+      if (ring.size() == 0)
       {
         continue;
       }
-      max = *candidate_segments[i][0];
-      min = *candidate_segments[i][candidate_segments[i].size() - 1];
-      min_points->push_back(min);
-      max_points->push_back(max);
+      min_points->push_back(ring[ring.size() - 1]);
+      max_points->push_back(ring[0]);
     }
 
     // Fit lines through minimum and maximum points
