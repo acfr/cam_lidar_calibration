@@ -455,6 +455,8 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     }
 
     sample.camera_centre = corner_vectors[4];  // Centre of board
+    corner_vectors.pop_back();
+    sample.camera_corners = corner_vectors;
     sample.camera_normal = cv::Point3d(chessboard_normal);
 
     // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
