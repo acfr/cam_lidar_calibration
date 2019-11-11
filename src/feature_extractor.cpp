@@ -471,7 +471,7 @@ FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
 
   cv::Mat rmat;
   cv::Rodrigues(rvec, rmat);
-  cv::Mat z{ 0., 0., 1. };
+  cv::Mat z = cv::Mat(cv::Point3d(0., 0., 1.));
   auto chessboard_normal = rmat * z;
 
   std::vector<cv::Point3d> corner_vectors;
