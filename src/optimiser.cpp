@@ -388,7 +388,7 @@ bool Optimiser::optimise()
     ln.copyTo(lidar_normals_.row(row));
     cv::Mat lc = cv::Mat(sample.lidar_centre).reshape(1).t();
     lc.copyTo(lidar_centres_.row(row));
-    cv::Mat l_cn = cv::Mat(sample.lidar_corner).reshape(1).t();
+    cv::Mat l_cn = cv::Mat(sample.lidar_corners[2]).reshape(1).t();
     l_cn.copyTo(lidar_corners_.row(row));
     row++;
   }

@@ -49,7 +49,6 @@ struct OptimisationSample
   std::vector<cv::Point3d> camera_corners;
   cv::Point3d lidar_centre{ 0, 0, 0 };
   cv::Point3d lidar_normal{ 0, 0, 0 };
-  cv::Point3d lidar_corner{ 0, 0, 0 };
   std::vector<cv::Point3d> lidar_corners;
 };
 
