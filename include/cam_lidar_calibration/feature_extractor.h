@@ -54,6 +54,8 @@ private:
 
   std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>
   extractBoard(const pcl::PointCloud<pcl::PointXYZIR>::Ptr& cloud);
+  std::pair<pcl::ModelCoefficients, pcl::ModelCoefficients>
+  findEdges(const pcl::PointCloud<pcl::PointXYZIR>::Ptr& edge_pair_cloud);
 
   Optimiser optimiser_;
   initial_parameters_t i_params;

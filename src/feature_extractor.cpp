@@ -544,6 +544,41 @@ FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud)
   return std::make_tuple(cloud_projected, lidar_normal);
 }
 
+std::pair<pcl::ModelCoefficients, pcl::ModelCoefficients>
+FeatureExtractor::findEdges(const PointCloud::Ptr& edge_pair_cloud)
+{
+  pcl::ModelCoefficients full_coeff, half_coeff;
+  pcl::PointIndices::Ptr full_inliers(new pcl::PointIndices), half_inliers(new pcl::PointIndices);
+  PointCloud::Ptr half_cloud(new PointCloud);
+
+  pcl::SACSegmentation<pcl::PointXYZIR> seg;
+  seg.setModelType(pcl::SACMODEL_LINE);
+  seg.setMethodType(pcl::SAC_RANSAC);
+  seg.setDistanceThreshold(0.02);
+  seg.setInputCloud(edge_pair_cloud);
+  seg.segment(*full_inliers, full_coeff);  // Fitting line1 through all points
+  pcl::ExtractIndices<pcl::PointXYZIR> extract;
+  extract.setInputCloud(edge_pair_cloud);
+  extract.setIndices(full_inliers);
+  extract.setNegative(true);
+  extract.filter(*half_cloud);
+  seg.setInputCloud(half_cloud);
+  seg.segment(*half_inliers, half_coeff);
+  // Fitting line2 through outlier points
+  // Determine which is above the other
+  pcl::PointXYZIR full_min, full_max, half_min, half_max;
+  pcl::getMinMax3D(*edge_pair_cloud, full_min, full_max);
+  pcl::getMinMax3D(*half_cloud, half_min, half_max);
+  if (full_max.z > half_max.z)
+  {
+    return std::make_pair(full_coeff, half_coeff);
+  }
+  else
+  {
+    return std::make_pair(half_coeff, full_coeff);
+  }
+}
+
 // Extract features of interest
 void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& image,
                                                const PointCloud::ConstPtr& pointcloud)
@@ -551,9 +586,14 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
   // Check if we have deduced the lidar ring count
   if (i_params.lidar_ring_count == 0)
   {
-    pcl::PointXYZIR min, max;
-    pcl::getMinMax3D(*pointcloud, min, max);
-    i_params.lidar_ring_count = max.ring + 1;
+    // pcl::getMinMax3D only works on x,y,z
+    for (const auto& p : pointcloud->points)
+    {
+      if (p.ring + 1 > i_params.lidar_ring_count)
+      {
+        i_params.lidar_ring_count = p.ring + 1;
+      }
+    }
     lidar_frame_ = pointcloud->header.frame_id;
   }
   PointCloud::Ptr cloud_bounded(new PointCloud);
@@ -614,133 +654,32 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     }
 
     // Fit lines through minimum and maximum points
-    pcl::ModelCoefficients::Ptr coefficients_left_up(new pcl::ModelCoefficients);
-    pcl::PointIndices::Ptr inliers_left_up(new pcl::PointIndices);
-    pcl::ModelCoefficients::Ptr coefficients_left_dwn(new pcl::ModelCoefficients);
-    pcl::PointIndices::Ptr inliers_left_dwn(new pcl::PointIndices);
-    pcl::ModelCoefficients::Ptr coefficients_right_up(new pcl::ModelCoefficients);
-    pcl::PointIndices::Ptr inliers_right_up(new pcl::PointIndices);
-    pcl::ModelCoefficients::Ptr coefficients_right_dwn(new pcl::ModelCoefficients);
-    pcl::PointIndices::Ptr inliers_right_dwn(new pcl::PointIndices);
-    PointCloud::Ptr cloud_f(new PointCloud), cloud_f1(new PointCloud);
+    auto [top_left, bottom_left] = findEdges(max_points);
+    auto [top_right, bottom_right] = findEdges(min_points);
+    ROS_INFO("Found line coefficients");
 
-    pcl::SACSegmentation<pcl::PointXYZIR> seg;
-    seg.setModelType(pcl::SACMODEL_LINE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.02);
-    seg.setInputCloud(max_points);
-    seg.segment(*inliers_left_up, *coefficients_left_up);  // Fitting line1 through max points
-    pcl::ExtractIndices<pcl::PointXYZIR> extract;
-    extract.setInputCloud(max_points);
-    extract.setIndices(inliers_left_up);
-    extract.setNegative(true);
-    extract.filter(*cloud_f);
-    seg.setInputCloud(cloud_f);
-    seg.segment(*inliers_left_dwn, *coefficients_left_dwn);  // Fitting line2 through max points
-    seg.setInputCloud(min_points);
-    seg.segment(*inliers_right_up, *coefficients_right_up);  // Fitting line1 through min points
-    extract.setInputCloud(min_points);
-    extract.setIndices(inliers_right_up);
-    extract.setNegative(true);
-    extract.filter(*cloud_f1);
-    seg.setInputCloud(cloud_f1);
-    seg.segment(*inliers_right_dwn, *coefficients_right_dwn);  // Fitting line2 through min points
+    // Find the corners
+    Eigen::Vector4f corner;
+    pcl::lineWithLineIntersection(top_left, top_right, corner);
+    cv::Point3d top(corner[0], corner[1], corner[2]);
+    pcl::lineWithLineIntersection(bottom_left, bottom_right, corner);
+    cv::Point3d bottom(corner[0], corner[1], corner[2]);
+    pcl::lineWithLineIntersection(top_left, bottom_left, corner);
+    cv::Point3d left(corner[0], corner[1], corner[2]);
+    pcl::lineWithLineIntersection(top_right, bottom_right, corner);
+    cv::Point3d right(corner[0], corner[1], corner[2]);
+    sample.lidar_corners.push_back(top);
+    sample.lidar_corners.push_back(left);
+    sample.lidar_corners.push_back(bottom);
+    sample.lidar_corners.push_back(right);
 
-    // Find out 2 (out of the four) intersection points
-    Eigen::Vector4f Point_l;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr basic_cloud_ptr(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::PointXYZ basic_point;  // intersection points stored here
-    if (pcl::lineWithLineIntersection(*coefficients_left_up, *coefficients_left_dwn, Point_l))
+    for (const auto& p : sample.lidar_corners)
     {
-      basic_point.x = Point_l[0];
-      basic_point.y = Point_l[1];
-      basic_point.z = Point_l[2];
-      basic_cloud_ptr->points.push_back(basic_point);
+      // Average the corners, and convert to mm
+      sample.lidar_centre.x += p.x / 4.0 * 1000.;
+      sample.lidar_centre.y += p.y / 4.0 * 1000.;
+      sample.lidar_centre.z += p.z / 4.0 * 1000.;
     }
-    if (pcl::lineWithLineIntersection(*coefficients_right_up, *coefficients_right_dwn, Point_l))
-    {
-      basic_point.x = Point_l[0];
-      basic_point.y = Point_l[1];
-      basic_point.z = Point_l[2];
-      basic_cloud_ptr->points.push_back(basic_point);
-    }
-
-    // To determine the other 2 intersection points
-
-    // Find out the diagonal vector(joining the line intersections from min_points and max_points)
-    Eigen::Vector3f diagonal(basic_cloud_ptr->points[1].x - basic_cloud_ptr->points[0].x,
-                             basic_cloud_ptr->points[1].y - basic_cloud_ptr->points[0].y,
-                             basic_cloud_ptr->points[1].z - basic_cloud_ptr->points[0].z);
-    // Take the first points in min_points and max_points,
-    // find the vectors joining them and the (intersection point of the two lines in min_points)
-    Eigen::Vector3f p1(min_points->points[inliers_right_dwn->indices[0]].x - basic_cloud_ptr->points[0].x,
-                       min_points->points[inliers_right_dwn->indices[0]].y - basic_cloud_ptr->points[0].y,
-                       min_points->points[inliers_right_dwn->indices[0]].z - basic_cloud_ptr->points[0].z);
-    Eigen::Vector3f p2(max_points->points[inliers_left_dwn->indices[0]].x - basic_cloud_ptr->points[0].x,
-                       max_points->points[inliers_left_dwn->indices[0]].y - basic_cloud_ptr->points[0].y,
-                       max_points->points[inliers_left_dwn->indices[0]].z - basic_cloud_ptr->points[0].z);
-    // To check if p1 and p2 lie on the same side or opp. side of diagonal vector.
-    // If they lie on the same side
-    if ((diagonal.cross(p1)).dot(diagonal.cross(p2)) > 0)
-    {
-      // Find out the line intersection between particular lines in min_points and max_points
-      if (pcl::lineWithLineIntersection(*coefficients_left_dwn, *coefficients_right_up, Point_l))
-      {
-        basic_point.x = Point_l[0];
-        basic_point.y = Point_l[1];
-        basic_point.z = Point_l[2];
-        basic_cloud_ptr->points.push_back(basic_point);
-      }
-      if (pcl::lineWithLineIntersection(*coefficients_left_up, *coefficients_right_dwn, Point_l))
-      {
-        basic_point.x = Point_l[0];
-        basic_point.y = Point_l[1];
-        basic_point.z = Point_l[2];
-        basic_cloud_ptr->points.push_back(basic_point);
-      }
-    }
-    // Else if they lie on the opp. side
-    else
-    {
-      // Find out the line intersection between other lines in min_points and max_points
-      if (pcl::lineWithLineIntersection(*coefficients_left_dwn, *coefficients_right_dwn, Point_l))
-      {
-        basic_point.x = Point_l[0];
-        basic_point.y = Point_l[1];
-        basic_point.z = Point_l[2];
-        basic_cloud_ptr->points.push_back(basic_point);
-      }
-      if (pcl::lineWithLineIntersection(*coefficients_left_up, *coefficients_right_up, Point_l))
-      {
-        basic_point.x = Point_l[0];
-        basic_point.y = Point_l[1];
-        basic_point.z = Point_l[2];
-        basic_cloud_ptr->points.push_back(basic_point);
-      }
-    }
-
-    // input data
-    sample.lidar_centre.x = (basic_cloud_ptr->points[0].x + basic_cloud_ptr->points[1].x) * 1000 / 2;
-    sample.lidar_centre.y = (basic_cloud_ptr->points[0].y + basic_cloud_ptr->points[1].y) * 1000 / 2;
-    sample.lidar_centre.z = (basic_cloud_ptr->points[0].z + basic_cloud_ptr->points[1].z) * 1000 / 2;
-    double top_down_radius = sqrt(pow(sample.lidar_centre.x / 1000, 2) + pow(sample.lidar_centre.y / 1000, 2));
-    double x_comp = sample.lidar_centre.x / 1000 + sample.lidar_normal.x / 2;
-    double y_comp = sample.lidar_centre.y / 1000 + sample.lidar_normal.y / 2;
-    double vector_dist = sqrt(pow(x_comp, 2) + pow(y_comp, 2));
-    if (vector_dist > top_down_radius)
-    {
-      sample.lidar_normal = -sample.lidar_normal;
-    }
-    sample.lidar_corner.x = basic_cloud_ptr->points[2].x;
-    sample.lidar_corner.y = basic_cloud_ptr->points[2].y;
-    sample.lidar_corner.z = basic_cloud_ptr->points[2].z;
-
-    for (auto& pt : basic_cloud_ptr->points)
-    {
-      cv::Point3d p(pt.x, pt.y, pt.z);
-      sample.lidar_corners.push_back(p);
-    }
-
     // Push this sample to the optimiser
     optimiser_.samples_.push_back(sample);
   }  // if (flag == Optimise::Request::CAPTURE)
