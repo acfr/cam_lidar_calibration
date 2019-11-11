@@ -44,12 +44,12 @@ struct RotationTranslationCost  // equivalent to y in matlab
 
 struct OptimisationSample
 {
-  cv::Point3d camera_centre;
-  cv::Point3d camera_normal;
+  cv::Point3d camera_centre{ 0, 0, 0 };
+  cv::Point3d camera_normal{ 0, 0, 0 };
   std::vector<cv::Point3d> camera_corners;
-  cv::Point3d lidar_centre;
-  cv::Point3d lidar_normal;
-  cv::Point3d lidar_corner;
+  cv::Point3d lidar_centre{ 0, 0, 0 };
+  cv::Point3d lidar_normal{ 0, 0, 0 };
+  cv::Point3d lidar_corner{ 0, 0, 0 };
   std::vector<cv::Point3d> lidar_corners;
 };
 
