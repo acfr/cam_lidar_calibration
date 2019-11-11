@@ -49,11 +49,10 @@ private:
 
   void passthrough(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
                    pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
-  std::optional<std::tuple<std::vector<cv::Point3d>, cv::Mat>>
-  locateChessboard(const sensor_msgs::Image::ConstPtr& image);
+  std::tuple<std::vector<cv::Point3d>, cv::Mat> locateChessboard(const sensor_msgs::Image::ConstPtr& image);
   auto chessboardProjection(const std::vector<cv::Point2d>& corners, const cv_bridge::CvImagePtr& cv_ptr);
 
-  std::optional<std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>>
+  std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>
   extractBoard(const pcl::PointCloud<pcl::PointXYZIR>::Ptr& cloud);
 
   Optimiser optimiser_;

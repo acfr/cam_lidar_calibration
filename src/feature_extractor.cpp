@@ -436,7 +436,7 @@ auto FeatureExtractor::chessboardProjection(const std::vector<cv::Point2d>& corn
   return std::make_tuple(rvec, tvec, board_corners_3d);
 }
 
-std::optional<std::tuple<std::vector<cv::Point3d>, cv::Mat>>
+std::tuple<std::vector<cv::Point3d>, cv::Mat>
 FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
 {
   // Convert to OpenCV image object
@@ -453,7 +453,9 @@ FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
   if (!pattern_found)
   {
     ROS_WARN("No chessboard found");
-    return std::nullopt;
+    std::vector<cv::Point3d> empty_corners;
+    cv::Mat empty_normal;
+    return std::make_tuple(empty_corners, empty_normal);
   }
   ROS_INFO("Chessboard found");
   // Find corner points with sub-pixel accuracy
@@ -482,10 +484,10 @@ FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
   // Publish the image with all the features marked in it
   ROS_INFO("Publishing chessboard image");
   image_publisher.publish(cv_ptr->toImageMsg());
-  return std::make_optional(std::make_tuple(corner_vectors, chessboard_normal));
+  return std::make_tuple(corner_vectors, chessboard_normal);
 }
 
-std::optional<std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>>
+std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>
 FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud)
 {
   PointCloud::Ptr cloud_filtered(new PointCloud);
@@ -516,11 +518,14 @@ FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud)
   pcl::ExtractIndices<pcl::PointXYZIR> extract;
   seg.setInputCloud(cloud_filtered);
   seg.segment(*inliers, *coefficients);
+
   // Check that segmentation succeeded
+  PointCloud::Ptr cloud_projected(new PointCloud);
   if (coefficients->values.size() < 3)
   {
     ROS_WARN("Checkerboard plane segmentation failed");
-    return std::nullopt;
+    cv::Point3d null_normal;
+    return std::make_tuple(cloud_projected, null_normal);
   }
 
   // Plane normal vector magnitude
@@ -528,7 +533,6 @@ FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud)
   lidar_normal /= -cv::norm(lidar_normal);  // Normalise and flip the direction
 
   // Project the inliers on the fit plane
-  PointCloud::Ptr cloud_projected(new PointCloud);
   pcl::ProjectInliers<pcl::PointXYZIR> proj;
   proj.setModelType(pcl::SACMODEL_PLANE);
   proj.setInputCloud(cloud_filtered);
@@ -537,7 +541,7 @@ FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud)
 
   // Publish the projected inliers
   board_cloud_pub_.publish(cloud_projected);
-  return std::make_optional(std::make_tuple(cloud_projected, lidar_normal));
+  return std::make_tuple(cloud_projected, lidar_normal);
 }
 
 // Extract features of interest
@@ -565,23 +569,21 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
     ROS_INFO("Processing sample");
 
-    auto chessboard_img = locateChessboard(image);
-    if (!chessboard_img)
+    auto [corner_vectors, chessboard_normal] = locateChessboard(image);
+    if (corner_vectors.size() == 0)
     {
       return;
     }
-    auto [corner_vectors, chessboard_normal] = *chessboard_img;
 
     sample.camera_centre = corner_vectors[4];  // Centre of board
     sample.camera_normal = cv::Point3d(chessboard_normal);
 
     // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
-    auto chessboard_lidar = extractBoard(cloud_bounded);
-    if (!chessboard_lidar)
+    auto [cloud_projected, lidar_normal] = extractBoard(cloud_bounded);
+    if (cloud_projected->points.size() == 0)
     {
       return;
     }
-    auto [cloud_projected, lidar_normal] = *chessboard_lidar;
     sample.lidar_normal = lidar_normal;
 
     // First: Sort out the points in the point cloud according to their ring numbers
