@@ -507,10 +507,11 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     cv::Point3d left(corner[0], corner[1], corner[2]);
     pcl::lineWithLineIntersection(top_right, bottom_right, corner);
     cv::Point3d right(corner[0], corner[1], corner[2]);
+    // Add points in same order as the paper
+    sample.lidar_corners.push_back(right);
     sample.lidar_corners.push_back(top);
     sample.lidar_corners.push_back(left);
     sample.lidar_corners.push_back(bottom);
-    sample.lidar_corners.push_back(right);
 
     for (const auto& p : sample.lidar_corners)
     {
