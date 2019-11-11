@@ -64,17 +64,36 @@ double colmap[50][3] = { { 0, 0, 0.5385 },
 
 void imageProjection(RotationTranslation rot_trans);
 
+cv::Mat operator*(const Rotation& lhs, const cv::Point3d& rhs)
+{
+  using cv::Mat_;
+  using std::cos;
+  using std::sin;
+
+  cv::Mat mat = cv::Mat(rhs).reshape(1);
+  cv::Mat R_x = (Mat_<double>(3, 3) << 1, 0, 0, 0, cos(lhs.roll), -sin(lhs.roll), 0, sin(lhs.roll), cos(lhs.roll));
+  // Calculate rotation about y axis
+  cv::Mat R_y = (Mat_<double>(3, 3) << cos(lhs.pitch), 0, sin(lhs.pitch), 0, 1, 0, -sin(lhs.pitch), 0, cos(lhs.pitch));
+
+  // Calculate rotation about z axis
+  cv::Mat R_z = (Mat_<double>(3, 3) << cos(lhs.yaw), -sin(lhs.yaw), 0, sin(lhs.yaw), cos(lhs.yaw), 0, 0, 0, 1);
+
+  // Combined rotation matrix
+  cv::Mat retval = R_z * R_y * R_x * mat;
+  return retval;
+}
+
 void Optimiser::init_genes2(RotationTranslation& p, const std::function<double(void)>& rnd01)
 {
   std::vector<double> pi_vals;
   pi_vals.push_back(M_PI / 18);
   pi_vals.push_back(-M_PI / 18);
   int RandIndex = rand() % 2;
-  p.e1 = eul_t.e1 + pi_vals.at(RandIndex) * rnd01();
+  p.rot.roll = eul_t.rot.roll + pi_vals.at(RandIndex) * rnd01();
   RandIndex = rand() % 2;
-  p.e2 = eul_t.e2 + pi_vals.at(RandIndex) * rnd01();
+  p.rot.pitch = eul_t.rot.pitch + pi_vals.at(RandIndex) * rnd01();
   RandIndex = rand() % 2;
-  p.e3 = eul_t.e3 + pi_vals.at(RandIndex) * rnd01();
+  p.rot.yaw = eul_t.rot.yaw + pi_vals.at(RandIndex) * rnd01();
 
   std::vector<double> trans_vals;
   trans_vals.push_back(0.05);
@@ -87,62 +106,43 @@ void Optimiser::init_genes2(RotationTranslation& p, const std::function<double(v
   p.z = eul_t.z + trans_vals.at(RandIndex) * rnd01();
 }
 
-double Optimiser::rotationFitnessFunc(double e1, double e2, double e3)
+double Optimiser::perpendicularCost(const Rotation& rot)
 {
-  tf::Matrix3x3 rot;
-  rot.setRPY(e1, e2, e3);
-  cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
-                     rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
-
-  cv::Mat normals = camera_normals_ * tmp_rot.t();  // camera normals in lidar frame
-  cv::Mat normal_diff = normals - lidar_normals_;
-  cv::Mat normal_square = normal_diff.mul(normal_diff);  // square the xyz components of normal_diff
-  cv::Mat summed_norm_diff;
-  cv::reduce(normal_square, summed_norm_diff, 1, CV_REDUCE_SUM, CV_64F);  // add the squared terms
-  cv::Mat sqrt_norm_diff;
-  sqrt(summed_norm_diff, sqrt_norm_diff);  // take the square root
-  double sqrt_norm_sum = 0.0;
-  for (int i = 0; i < samples_.size(); i++)
+  // TODO - At the moment this is reversed from the paper.
+  // We are currently calculating everything relative to the lidar frame
+  // The paper does everything in the camera frame
+  // Eq (3) in the paper
+  double cost = 0;
+  for (const auto& sample : samples_)
   {
-    sqrt_norm_sum += sqrt_norm_diff.at<double>(i);  // Add the errors involved in all the vectors
+    auto camera_normal_lidar_frame = rot * sample.camera_normal;
+    auto perp = cv::Mat(sample.lidar_centre - sample.lidar_corners[0]).reshape(1);
+    perp /= cv::norm(perp);
+    cost += std::pow(perp.dot(camera_normal_lidar_frame), 2) / samples_.size();
   }
+  return cost;
+}
 
-  double ana = sqrt_norm_sum / samples_.size();  // divide this sum by the total number of samples
-
-  // vectors on the board plane (w.r.t lidar frame)
-  cv::Mat plane_vectors = lidar_centres_ - lidar_corners_;
-  double error_dot = 0.0;
-  for (int i = 0; i < sqrt_norm_diff.rows; i++)
+double Optimiser::alignmentCost(const Rotation& rot)
+{
+  // Eq (4)
+  // TODO - At the moment this is reversed from the paper.
+  // We are currently calculating everything relative to the lidar frame
+  // The paper does everything in the camera frame
+  double cost = 0;
+  for (const auto& sample : samples_)
   {
-    cv::Mat plane_vector = plane_vectors.row(i);
-    plane_vector = plane_vector / norm(plane_vector);
-    double temp_err_dot = pow(normals.row(i).dot(plane_vector), 2);
-    error_dot += temp_err_dot;
+    auto camera_normal_lidar_frame = rot * sample.camera_normal;
+    cost += cv::norm(camera_normal_lidar_frame - cv::Mat(sample.lidar_normal).reshape(1)) / samples_.size();
   }
-  error_dot = error_dot / samples_.size();  // dot product average
-
-  if (output)
-  {
-    std::cout << "sqrt_norm_sum " << sqrt_norm_sum << std::endl;
-    std::cout << "sqrt_norm_diff.rows " << sqrt_norm_diff.rows << std::endl;
-    std::cout << "rotation " << tmp_rot << std::endl;
-    std::cout << "normals " << normals << std::endl;
-    std::cout << "normal_diff " << normal_diff << std::endl;
-    std::cout << "normal_square " << normal_square << std::endl;
-    std::cout << "summed_norm_diff " << summed_norm_diff << std::endl;
-    std::cout << "sqrt_norm_diff " << sqrt_norm_diff << std::endl;
-    std::cout << "sqrt_norm_sum " << sqrt_norm_sum << std::endl;
-    std::cout << "ana " << ana << std::endl;
-    std::cout << "error_dot " << error_dot << std::endl;
-  }
-  return error_dot + ana;
+  return cost;
 }
 
 bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslationCost& c)
 {
-  const double& e1 = p.e1;
-  const double& e2 = p.e2;
-  const double& e3 = p.e3;
+  const double& e1 = p.rot.roll;
+  const double& e2 = p.rot.pitch;
+  const double& e3 = p.rot.yaw;
   const double& x = p.x;
   const double& y = p.y;
   const double& z = p.z;
@@ -152,7 +152,7 @@ bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslation
   cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
                      rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
 
-  double rot_error = rotationFitnessFunc(e1, e2, e3);
+  double rot_error = perpendicularCost(p.rot) + alignmentCost(p.rot);
 
   cv::Mat translation_ana = (cv::Mat_<double>(1, 3) << x, y, z);
   cv::Mat rt, t_fin, vpoints, cpoints;
@@ -224,12 +224,15 @@ RotationTranslation Optimiser::mutate2(const RotationTranslation& X_base, const 
   {
     in_range = true;
     X_new = X_base;
-    X_new.e1 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e1 >= (eul_t.e1 - M_PI / 18) && X_new.e1 < (eul_t.e1 + M_PI / 18));
-    X_new.e2 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e2 >= (eul_t.e2 - M_PI / 18) && X_new.e2 < (eul_t.e2 + M_PI / 18));
-    X_new.e3 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e3 >= (eul_t.e3 - M_PI / 18) && X_new.e3 < (eul_t.e3 + M_PI / 18));
+    X_new.rot.roll += 0.2 * (rnd01() - rnd01()) * shrink_scale;
+    in_range =
+        in_range && (X_new.rot.roll >= (eul_t.rot.roll - M_PI / 18) && X_new.rot.roll < (eul_t.rot.roll + M_PI / 18));
+    X_new.rot.pitch += 0.2 * (rnd01() - rnd01()) * shrink_scale;
+    in_range = in_range &&
+               (X_new.rot.pitch >= (eul_t.rot.pitch - M_PI / 18) && X_new.rot.pitch < (eul_t.rot.pitch + M_PI / 18));
+    X_new.rot.yaw += 0.2 * (rnd01() - rnd01()) * shrink_scale;
+    in_range =
+        in_range && (X_new.rot.yaw >= (eul_t.rot.yaw - M_PI / 18) && X_new.rot.yaw < (eul_t.rot.yaw + M_PI / 18));
 
     X_new.x += 0.2 * (rnd01() - rnd01()) * shrink_scale;
     in_range = in_range && (X_new.x >= (eul_t.x - 0.05) && X_new.x < (eul_t.x + 0.05));
@@ -248,11 +251,11 @@ RotationTranslation Optimiser::crossover2(const RotationTranslation& X1, const R
   RotationTranslation X_new;
   double r;
   r = rnd01();
-  X_new.e1 = r * X1.e1 + (1.0 - r) * X2.e1;
+  X_new.rot.roll = r * X1.rot.roll + (1.0 - r) * X2.rot.roll;
   r = rnd01();
-  X_new.e2 = r * X1.e2 + (1.0 - r) * X2.e2;
+  X_new.rot.pitch = r * X1.rot.pitch + (1.0 - r) * X2.rot.pitch;
   r = rnd01();
-  X_new.e3 = r * X1.e3 + (1.0 - r) * X2.e3;
+  X_new.rot.yaw = r * X1.rot.yaw + (1.0 - r) * X2.rot.yaw;
   r = rnd01();
   X_new.x = r * X1.x + (1.0 - r) * X2.x;
   r = rnd01();
@@ -275,9 +278,9 @@ void Optimiser::SO_report_generation2(
     int generation_number, const EA::GenerationType<RotationTranslation, RotationTranslationCost>& last_generation,
     const RotationTranslation& best_genes)
 {
-  eul_it.e1 = best_genes.e1;
-  eul_it.e2 = best_genes.e2;
-  eul_it.e3 = best_genes.e3;
+  eul_it.rot.roll = best_genes.rot.roll;
+  eul_it.rot.pitch = best_genes.rot.pitch;
+  eul_it.rot.yaw = best_genes.rot.yaw;
   eul_it.x = best_genes.x;
   eul_it.y = best_genes.y;
   eul_it.z = best_genes.z;
@@ -289,20 +292,16 @@ void Optimiser::init_genes(Rotation& p, const std::function<double(void)>& rnd01
   pi_vals.push_back(M_PI / 8);
   pi_vals.push_back(-M_PI / 8);
   int RandIndex = rand() % 2;
-  p.e1 = eul.e1 + pi_vals.at(RandIndex) * rnd01();
+  p.roll = eul.roll + pi_vals.at(RandIndex) * rnd01();
   RandIndex = rand() % 2;
-  p.e2 = eul.e2 + pi_vals.at(RandIndex) * rnd01();
+  p.pitch = eul.pitch + pi_vals.at(RandIndex) * rnd01();
   RandIndex = rand() % 2;
-  p.e3 = eul.e3 + pi_vals.at(RandIndex) * rnd01();
+  p.yaw = eul.yaw + pi_vals.at(RandIndex) * rnd01();
 }
 
 bool Optimiser::eval_solution(const Rotation& p, RotationCost& c)
 {
-  const double& e1 = p.e1;
-  const double& e2 = p.e2;
-  const double& e3 = p.e3;
-
-  c.objective1 = rotationFitnessFunc(e1, e2, e3);
+  c.objective1 = perpendicularCost(p) + alignmentCost(p);
 
   return true;  // solution is accepted
 }
@@ -315,12 +314,12 @@ Rotation Optimiser::mutate(const Rotation& X_base, const std::function<double(vo
   {
     in_range = true;
     X_new = X_base;
-    X_new.e1 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e1 >= (eul.e1 - M_PI / 8) && X_new.e1 < (eul.e1 + M_PI / 8));
-    X_new.e2 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e2 >= (eul.e2 - M_PI / 8) && X_new.e2 < (eul.e2 + M_PI / 8));
-    X_new.e3 += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.e3 >= (eul.e3 - M_PI / 8) && X_new.e3 < (eul.e3 + M_PI / 8));
+    X_new.roll += 0.2 * (rnd01() - rnd01()) * shrink_scale;
+    in_range = in_range && (X_new.roll >= (eul.roll - M_PI / 8) && X_new.roll < (eul.roll + M_PI / 8));
+    X_new.pitch += 0.2 * (rnd01() - rnd01()) * shrink_scale;
+    in_range = in_range && (X_new.pitch >= (eul.pitch - M_PI / 8) && X_new.pitch < (eul.pitch + M_PI / 8));
+    X_new.yaw += 0.2 * (rnd01() - rnd01()) * shrink_scale;
+    in_range = in_range && (X_new.yaw >= (eul.yaw - M_PI / 8) && X_new.yaw < (eul.yaw + M_PI / 8));
   } while (!in_range);
   return X_new;
 }
@@ -329,11 +328,11 @@ Rotation Optimiser::crossover(const Rotation& X1, const Rotation& X2, const std:
 {
   Rotation X_new;
   double r = rnd01();
-  X_new.e1 = r * X1.e1 + (1.0 - r) * X2.e1;
+  X_new.roll = r * X1.roll + (1.0 - r) * X2.roll;
   r = rnd01();
-  X_new.e2 = r * X1.e2 + (1.0 - r) * X2.e2;
+  X_new.pitch = r * X1.pitch + (1.0 - r) * X2.pitch;
   r = rnd01();
-  X_new.e3 = r * X1.e3 + (1.0 - r) * X2.e3;
+  X_new.yaw = r * X1.yaw + (1.0 - r) * X2.yaw;
   return X_new;
 }
 
@@ -356,13 +355,13 @@ void Optimiser::SO_report_generation(int generation_number,
   //   <<"Best genes =("<<best_genes.to_string()<<")"<<", "
   //  <<"Exe_time ="<<last_generation.exe_time
   //  << std::endl;
-  eul_t.e1 = best_genes.e1;
-  eul_t.e2 = best_genes.e2;
-  eul_t.e3 = best_genes.e3;
+  eul_t.rot.roll = best_genes.roll;
+  eul_t.rot.pitch = best_genes.pitch;
+  eul_t.rot.yaw = best_genes.yaw;
 
-  //  std::cout << "eul_t assign " << eul_t.e1 << " "
-  //            << eul_t.e2 << " "
-  //            <<  eul_t.e3 << std::endl;
+  //  std::cout << "eul_t assign " << eul_t.roll << " "
+  //            << eul_t.pitch << " "
+  //            <<  eul_t.yaw << std::endl;
 }
 
 bool Optimiser::optimise()
@@ -399,9 +398,9 @@ bool Optimiser::optimise()
   std::vector<double> euler;
   euler = rotm2eul(UNR);  // rpy wrt original axes
   ROS_INFO_STREAM("Analytical Euler angles " << euler.at(0) << " " << euler.at(1) << " " << euler.at(2));
-  eul.e1 = euler[0];
-  eul.e2 = euler[1];
-  eul.e3 = euler[2];
+  eul.roll = euler[0];
+  eul.pitch = euler[1];
+  eul.yaw = euler[2];
 
   EA::Chronometer timer;
   timer.tic();
@@ -433,7 +432,7 @@ bool Optimiser::optimise()
 
   // Optimized rotation
   tf::Matrix3x3 rot;
-  rot.setRPY(eul_t.e1, eul_t.e2, eul_t.e3);
+  rot.setRPY(eul_t.rot.roll, eul_t.rot.pitch, eul_t.rot.yaw);
   cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
                      rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
   // Analytical Translation
@@ -445,9 +444,9 @@ bool Optimiser::optimise()
   eul_t.x = summed_diff.at<double>(0);
   eul_t.y = summed_diff.at<double>(1);
   eul_t.z = summed_diff.at<double>(2);
-  ROS_INFO_STREAM("Rotation and Translation after first optimization " << eul_t.e1 << " " << eul_t.e2 << " " << eul_t.e3
-                                                                       << " " << eul_t.x << " " << eul_t.y << " "
-                                                                       << eul_t.z);
+  ROS_INFO_STREAM("Rotation and Translation after first optimization " << eul_t.rot.roll << " " << eul_t.rot.pitch
+                                                                       << " " << eul_t.rot.yaw << " " << eul_t.x << " "
+                                                                       << eul_t.y << " " << eul_t.z);
 
   // extrinsics stored the vector of extrinsic parameters in every iteration
   std::vector<std::vector<double>> extrinsics;
@@ -477,9 +476,9 @@ bool Optimiser::optimise()
     ga_obj2.elite_count = 10;
     ga_obj2.solve();
     std::vector<double> ex_it;
-    ex_it.push_back(eul_it.e1);
-    ex_it.push_back(eul_it.e2);
-    ex_it.push_back(eul_it.e3);
+    ex_it.push_back(eul_it.rot.roll);
+    ex_it.push_back(eul_it.rot.pitch);
+    ex_it.push_back(eul_it.rot.yaw);
     ex_it.push_back(eul_it.x);
     ex_it.push_back(eul_it.y);
     ex_it.push_back(eul_it.z);
@@ -503,15 +502,15 @@ bool Optimiser::optimise()
   }
 
   RotationTranslation rot_trans;
-  rot_trans.e1 = e_e1 / 10;
-  rot_trans.e2 = e_e2 / 10;
-  rot_trans.e3 = e_e3 / 10;
+  rot_trans.rot.roll = e_e1 / 10;
+  rot_trans.rot.pitch = e_e2 / 10;
+  rot_trans.rot.yaw = e_e3 / 10;
   rot_trans.x = e_x / 10;
   rot_trans.y = e_y / 10;
   rot_trans.z = e_z / 10;
   ROS_INFO_STREAM("Extrinsic Parameters "
-                  << " " << rot_trans.e1 << " " << rot_trans.e2 << " " << rot_trans.e3 << " " << rot_trans.x << " "
-                  << rot_trans.y << " " << rot_trans.z);
+                  << " " << rot_trans.rot.roll << " " << rot_trans.rot.pitch << " " << rot_trans.rot.yaw << " "
+                  << rot_trans.x << " " << rot_trans.y << " " << rot_trans.z);
   ROS_INFO_STREAM("The problem was optimised in " << timer.toc() << " seconds");
 
   return true;

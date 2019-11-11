@@ -7,28 +7,29 @@ namespace cam_lidar_calibration
 {
 struct Rotation
 {
-  double e1;  // Rotation optimization variables
-  double e2;
-  double e3;
+  double roll;  // Rotation optimization variables
+  double pitch;
+  double yaw;
   std::string to_string() const
   {
-    return std::string("{") + "e1:" + std::to_string(e1) + ", e2:" + std::to_string(e2) + ", e3:" + std::to_string(e3) +
-           "}";
+    return std::string("{") + "roll:" + std::to_string(roll) + ", pitch:" + std::to_string(pitch) +
+           ", yaw:" + std::to_string(yaw) + "}";
   }
 };
 
+cv::Mat operator*(const Rotation& lhs, const cv::Point3d& rhs);
+
 struct RotationTranslation
 {
-  double e1;  // Joint (Rotation and translation) optimization variables
-  double e2;
-  double e3;
+  Rotation rot;
   double x;
   double y;
   double z;
   std::string to_string() const
   {
-    return std::string("{") + "e1:" + std::to_string(e1) + ", e2:" + std::to_string(e2) + ", e3:" + std::to_string(e3) +
-           ", x:" + std::to_string(x) + ", y:" + std::to_string(y) + ", z:" + std::to_string(z) + "}";
+    return std::string("{") + "roll:" + std::to_string(rot.roll) + ", pitch:" + std::to_string(rot.pitch) +
+           ", yaw:" + std::to_string(rot.yaw) + ", x:" + std::to_string(x) + ", y:" + std::to_string(y) +
+           ", z:" + std::to_string(z) + "}";
   }
 };
 
@@ -85,7 +86,9 @@ public:
 
 private:
   double* convertToImagePoints(double x, double y, double z);
-  double rotationFitnessFunc(double e1, double e2, double e3);
+
+  double perpendicularCost(const Rotation& rot);
+  double alignmentCost(const Rotation& rot);
 
   cv::Mat camera_normals_;
   cv::Mat camera_centres_;
