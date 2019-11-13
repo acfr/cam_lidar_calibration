@@ -112,13 +112,6 @@ private:
   double reprojectionCost(const RotationTranslation& rot_trans);
   double centreAlignmentCost(const RotationTranslation& rot_trans);
 
-  cv::Mat camera_normals_;
-  cv::Mat camera_centres_;
-  cv::Mat lidar_centres_;
-  cv::Mat lidar_normals_;
-  cv::Mat lidar_corners_;
-  cv::Mat pixel_errors_;
-
   Rotation eul;
   RotationTranslation eul_t, eul_it;
   initial_parameters_t i_params;

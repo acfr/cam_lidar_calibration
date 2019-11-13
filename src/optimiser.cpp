@@ -308,12 +308,10 @@ bool Optimiser::optimise()
       ROS_INFO_STREAM("Lidar corner:" << c);
     }
   }
-  camera_normals_ = cv::Mat(n, 3, CV_64F);
-  camera_centres_ = cv::Mat(n, 3, CV_64F);
-  lidar_centres_ = cv::Mat(n, 3, CV_64F);
-  lidar_normals_ = cv::Mat(n, 3, CV_64F);
-  lidar_corners_ = cv::Mat(n, 3, CV_64F);
-  pixel_errors_ = cv::Mat(1, n, CV_64F);
+  auto camera_normals_ = cv::Mat(n, 3, CV_64F);
+  auto camera_centres_ = cv::Mat(n, 3, CV_64F);
+  auto lidar_centres_ = cv::Mat(n, 3, CV_64F);
+  auto lidar_normals_ = cv::Mat(n, 3, CV_64F);
 
   // Insert vector elements into cv::Mat for easy matrix operation
   int row = 0;
@@ -327,8 +325,6 @@ bool Optimiser::optimise()
     ln.copyTo(lidar_normals_.row(row));
     cv::Mat lc = cv::Mat(sample.lidar_centre).reshape(1).t();
     lc.copyTo(lidar_centres_.row(row));
-    cv::Mat l_cn = cv::Mat(sample.lidar_corners[2]).reshape(1).t();
-    l_cn.copyTo(lidar_corners_.row(row));
     row++;
   }
   cv::Mat NN = camera_normals_.t() * camera_normals_;
