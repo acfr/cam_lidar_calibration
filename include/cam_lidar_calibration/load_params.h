@@ -16,7 +16,6 @@ struct initial_parameters_t
   cv::Size board_dimensions;         // in millimetres
   cv::Point3d cb_translation_error;  // in millimetres
   cv::Mat cameramat;
-  int distcoeff_num;
   cv::Mat distcoeff;
   std::pair<int, int> image_size;  // in pixels
 };
