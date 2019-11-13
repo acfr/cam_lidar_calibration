@@ -115,7 +115,7 @@ double Optimiser::perpendicularCost(const Rotation& rot)
   return cost;
 }
 
-double Optimiser::alignmentCost(const Rotation& rot)
+double Optimiser::normalAlignmentCost(const Rotation& rot)
 {
   // Eq (4)
   // TODO - At the moment this is reversed from the paper.
@@ -170,83 +170,38 @@ double Optimiser::reprojectionCost(const RotationTranslation& rot_trans)
   return cost;
 }
 
+double Optimiser::centreAlignmentCost(const RotationTranslation& rot_trans)
+{
+  // Eq (6) and (7)
+  // TODO - At the moment this is reversed from the paper.
+  // We are currently calculating everything relative to the lidar frame
+  // The paper does everything in the camera frame
+  double abs_mean = 0;
+  for (const auto& sample : samples_)
+  {
+    auto camera_centre_lidar_frame = rot_trans * sample.camera_centre;
+    abs_mean += cv::norm(camera_centre_lidar_frame - cv::Mat(sample.lidar_centre).reshape(1)) / samples_.size();
+  }
+  double stddev = 0;
+  for (const auto& sample : samples_)
+  {
+    auto camera_centre_lidar_frame = rot_trans * sample.camera_centre;
+    stddev += std::pow(cv::norm(camera_centre_lidar_frame - cv::Mat(sample.lidar_centre).reshape(1)) - abs_mean, 2) /
+              samples_.size();
+  }
+  stddev = std::sqrt(stddev);
+  return abs_mean + stddev;
+}
+
 bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslationCost& c)
 {
-  const double& e1 = p.rot.roll;
-  const double& e2 = p.rot.pitch;
-  const double& e3 = p.rot.yaw;
-  const double& x = p.x;
-  const double& y = p.y;
-  const double& z = p.z;
+  double perpendicular_cost = perpendicularCost(p.rot);
+  double normal_align_cost = normalAlignmentCost(p.rot);
 
-  tf::Matrix3x3 rot;
-  rot.setRPY(e1, e2, e3);
-  cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
-                     rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
-
-  double rot_error = perpendicularCost(p.rot) + alignmentCost(p.rot);
-
-  cv::Mat translation_ana = (cv::Mat_<double>(1, 3) << x, y, z);
-  cv::Mat rt, t_fin, vpoints, cpoints;
-  cv::Mat l_row = (cv::Mat_<double>(1, 4) << 0.0, 0.0, 0.0, 1.0);
-  cv::hconcat(tmp_rot, translation_ana.t(), rt);
-  cv::vconcat(rt, l_row, t_fin);
-  cv::hconcat(lidar_centres_, cv::Mat::ones(samples_.size(), 1, CV_64F), vpoints);
-  cv::hconcat(camera_centres_, cv::Mat::ones(samples_.size(), 1, CV_64F), cpoints);
-  cv::Mat cp_rot = t_fin.inv() * vpoints.t();
-  cp_rot = cp_rot.t();
-  cv::Mat trans_diff = cp_rot - cpoints;
-  trans_diff = trans_diff.mul(trans_diff);
-  cv::Mat summed_norm_diff, sqrt_norm_sum, sqrt_norm_diff;
-  cv::reduce(trans_diff, summed_norm_diff, 1, CV_REDUCE_SUM, CV_64F);
-  sqrt(summed_norm_diff, sqrt_norm_diff);
-  double summed_sqrt = 0.0;
-  for (int i = 0; i < samples_.size(); i++)
-  {
-    summed_sqrt += sqrt_norm_diff.at<double>(i);
-  }
-  double error_trans = summed_sqrt / samples_.size();
-
-  cv::Mat meanValue, stdValue;
-  cv::meanStdDev(sqrt_norm_diff, meanValue, stdValue);
-
-  double var;
-  var = stdValue.at<double>(0);
-
-  std::vector<double> pixel_error;
-  for (int i = 0; i < samples_.size(); i++)
-  {
-    double* my_cp = convertToImagePoints(cp_rot.at<double>(i, 0), cp_rot.at<double>(i, 1), cp_rot.at<double>(i, 2));
-    double* my_vp = convertToImagePoints(cpoints.at<double>(i, 0), cpoints.at<double>(i, 1), cpoints.at<double>(i, 2));
-    double pix_e = sqrt(pow((my_cp[0] - my_vp[0]), 2) + pow((my_cp[1] - my_vp[1]), 2)) * pixel_errors_.at<double>(i);
-    pixel_error.push_back(pix_e);
-  }
-
-  double error_pix = *std::max_element(pixel_error.begin(), pixel_error.end());
+  double centre_align_cost = centreAlignmentCost(p);
   double repro_cost = reprojectionCost(p);
-  // ROS_INFO_STREAM("Reprojection error - old: " << error_pix << ", new: " << repro_cost);
+  c.objective2 = perpendicular_cost + normal_align_cost + centre_align_cost + repro_cost;
 
-  // c.objective2 = rot_error + var + error_trans + error_pix;
-  c.objective2 = rot_error + var + error_trans + repro_cost;
-
-  if (output2)
-  {
-    std::cout << "samples: " << samples_.size() << std::endl;
-    std::cout << "tmp_rot " << tmp_rot << std::endl;
-    std::cout << "cp_rot " << cp_rot << std::endl;
-    std::cout << "t_fin " << t_fin << std::endl;
-    std::cout << "translation_ana " << translation_ana << std::endl;
-    std::cout << "cp_rot " << cp_rot << std::endl;
-    std::cout << "camera_centres " << camera_centres_ << std::endl;
-    std::cout << "trans_diff " << trans_diff << std::endl;
-    std::cout << "summed_norm_diff " << summed_norm_diff << std::endl;
-    std::cout << "sqrt_norm_diff " << sqrt_norm_diff << std::endl;
-    std::cout << "summed_sqrt " << summed_sqrt << std::endl;
-    std::cout << "error_trans " << error_trans << std::endl;
-    std::cout << "c.objective2 " << c.objective2 << std::endl;
-    std::cout << "error_pix " << error_pix << std::endl;
-  }
-  output2 = 0;
   return true;  // solution is accepted
 }
 
@@ -336,7 +291,7 @@ void Optimiser::init_genes(Rotation& p, const std::function<double(void)>& rnd01
 
 bool Optimiser::eval_solution(const Rotation& p, RotationCost& c)
 {
-  c.objective1 = perpendicularCost(p) + alignmentCost(p);
+  c.objective1 = perpendicularCost(p) + normalAlignmentCost(p);
 
   return true;  // solution is accepted
 }

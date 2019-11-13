@@ -110,8 +110,9 @@ private:
   double* convertToImagePoints(double x, double y, double z);
 
   double perpendicularCost(const Rotation& rot);
-  double alignmentCost(const Rotation& rot);
+  double normalAlignmentCost(const Rotation& rot);
   double reprojectionCost(const RotationTranslation& rot_trans);
+  double centreAlignmentCost(const RotationTranslation& rot_trans);
 
   cv::Mat camera_normals_;
   cv::Mat camera_centres_;
