@@ -143,9 +143,6 @@ double Optimiser::reprojectionCost(const RotationTranslation& rot_trans)
     std::vector<cv::Point3d> cam_centre_3d;
     std::vector<cv::Point3d> lidar_centre_3d;
 
-    /*cam_centre_3d.push_back(sample.camera_centre);
-    auto lidar_centre_camera_frame = cv::Point3d(rot_trans * sample.lidar_centre);
-    lidar_centre_3d.push_back(lidar_centre_camera_frame); */
     auto camera_centre_lidar_frame = cv::Point3d(rot_trans * sample.camera_centre);
     cam_centre_3d.push_back(camera_centre_lidar_frame);
     lidar_centre_3d.push_back(sample.lidar_centre);
@@ -574,43 +571,7 @@ double* Optimiser::convertToImagePoints(double x, double y, double z)
 
   return img_coord;
 }
-/*
-pcl::PointCloud<pcl::PointXYZIR> organizedPointcloud(pcl::PointCloud<pcl::PointXYZIR>::Ptr input_pointcloud)
-{
-  pcl::PointCloud<pcl::PointXYZIR> organized_pc;
-  pcl::KdTreeFLANN<pcl::PointXYZIR> kdtree;
 
-  // Kdtree to sort the point cloud
-  kdtree.setInputCloud(input_pointcloud);
-
-  pcl::PointXYZIR searchPoint;  // camera position as target
-  searchPoint.x = 0.0f;
-  searchPoint.y = 0.0f;
-  searchPoint.z = 0.0f;
-
-  int K = input_pointcloud->points.size();
-  std::vector<int> pointIdxNKNSearch(K);
-  std::vector<float> pointNKNSquaredDistance(K);
-
-  // Sort the point cloud based on distance to the camera
-  if (kdtree.nearestKSearch(searchPoint, K, pointIdxNKNSearch, pointNKNSquaredDistance) > 0)
-  {
-    for (size_t i = 0; i < pointIdxNKNSearch.size(); ++i)
-    {
-      pcl::PointXYZIR point;
-      point.x = input_pointcloud->points[pointIdxNKNSearch[i]].x;
-      point.y = input_pointcloud->points[pointIdxNKNSearch[i]].y;
-      point.z = input_pointcloud->points[pointIdxNKNSearch[i]].z;
-      point.intensity = input_pointcloud->points[pointIdxNKNSearch[i]].intensity;
-      point.ring = input_pointcloud->points[pointIdxNKNSearch[i]].ring;
-      organized_pc.push_back(point);
-    }
-  }
-
-  // Return sorted point cloud
-  return (organized_pc);
-}
-*/
 Optimiser::Optimiser(const initial_parameters_t& params) : i_params(params)
 {
 }
