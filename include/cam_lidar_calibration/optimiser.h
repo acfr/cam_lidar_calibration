@@ -1,6 +1,11 @@
 #ifndef optimiser_h_
 #define optimiser_h_
 
+#include <opencv/cv.hpp>
+
+#include <ros/ros.h>
+
+#include "cam_lidar_calibration/load_params.h"
 #include "cam_lidar_calibration/openga.h"
 
 namespace cam_lidar_calibration
@@ -14,6 +19,21 @@ struct Rotation
   {
     return std::string("{") + "roll:" + std::to_string(roll) + ", pitch:" + std::to_string(pitch) +
            ", yaw:" + std::to_string(yaw) + "}";
+  }
+  cv::Mat toMat() const
+  {
+    using cv::Mat_;
+    using std::cos;
+    using std::sin;
+
+    cv::Mat R_x = (Mat_<double>(3, 3) << 1, 0, 0, 0, cos(roll), -sin(roll), 0, sin(roll), cos(roll));
+    // Calculate rotation about y axis
+    cv::Mat R_y = (Mat_<double>(3, 3) << cos(pitch), 0, sin(pitch), 0, 1, 0, -sin(pitch), 0, cos(pitch));
+
+    // Calculate rotation about z axis
+    cv::Mat R_z = (Mat_<double>(3, 3) << cos(yaw), -sin(yaw), 0, sin(yaw), cos(yaw), 0, 0, 0, 1);
+
+    return R_z * R_y * R_x;
   }
 };
 
@@ -32,6 +52,8 @@ struct RotationTranslation
            ", z:" + std::to_string(z) + "}";
   }
 };
+
+cv::Mat operator*(const RotationTranslation& lhs, const cv::Point3d& rhs);
 
 struct RotationCost  // equivalent to y in matlab
 {
@@ -59,7 +81,7 @@ typedef EA::Genetic<RotationTranslation, RotationTranslationCost> GA_Type2;
 class Optimiser
 {
 public:
-  Optimiser();
+  Optimiser(const initial_parameters_t& params);
   ~Optimiser() = default;
 
   bool optimise();
@@ -89,6 +111,7 @@ private:
 
   double perpendicularCost(const Rotation& rot);
   double alignmentCost(const Rotation& rot);
+  double reprojectionCost(const RotationTranslation& rot_trans);
 
   cv::Mat camera_normals_;
   cv::Mat camera_centres_;

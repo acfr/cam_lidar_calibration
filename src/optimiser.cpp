@@ -1,14 +1,8 @@
+#include "cam_lidar_calibration/optimiser.h"
+
 #include "cam_lidar_calibration/point_xyzir.h"
 
-#include <opencv/cv.hpp>
-
-#include <ros/ros.h>
-
 #include <tf/transform_datatypes.h>
-
-#include "cam_lidar_calibration/calibration_data.h"
-#include "cam_lidar_calibration/load_params.h"
-#include "cam_lidar_calibration/optimiser.h"
 
 namespace cam_lidar_calibration
 {
@@ -67,20 +61,18 @@ void imageProjection(RotationTranslation rot_trans);
 cv::Mat operator*(const Rotation& lhs, const cv::Point3d& rhs)
 {
   using cv::Mat_;
-  using std::cos;
-  using std::sin;
 
   cv::Mat mat = cv::Mat(rhs).reshape(1);
-  cv::Mat R_x = (Mat_<double>(3, 3) << 1, 0, 0, 0, cos(lhs.roll), -sin(lhs.roll), 0, sin(lhs.roll), cos(lhs.roll));
-  // Calculate rotation about y axis
-  cv::Mat R_y = (Mat_<double>(3, 3) << cos(lhs.pitch), 0, sin(lhs.pitch), 0, 1, 0, -sin(lhs.pitch), 0, cos(lhs.pitch));
-
-  // Calculate rotation about z axis
-  cv::Mat R_z = (Mat_<double>(3, 3) << cos(lhs.yaw), -sin(lhs.yaw), 0, sin(lhs.yaw), cos(lhs.yaw), 0, 0, 0, 1);
-
   // Combined rotation matrix
-  cv::Mat retval = R_z * R_y * R_x * mat;
-  return retval;
+  return lhs.toMat() * mat;
+}
+cv::Mat operator*(const RotationTranslation& lhs, const cv::Point3d& rhs)
+{
+  auto rotated = cv::Point3d(lhs.rot * rhs);
+  rotated.x += lhs.x;
+  rotated.y += lhs.y;
+  rotated.z += lhs.z;
+  return cv::Mat(rotated).reshape(1);
 }
 
 void Optimiser::init_genes2(RotationTranslation& p, const std::function<double(void)>& rnd01)
@@ -138,6 +130,46 @@ double Optimiser::alignmentCost(const Rotation& rot)
   return cost;
 }
 
+double Optimiser::reprojectionCost(const RotationTranslation& rot_trans)
+{
+  // TODO - this is currently operating in the lidar frame
+  // The paper uses the camera frame
+  cv::Mat rvec = cv::Mat_<double>::zeros(3, 1);
+  cv::Mat tvec = cv::Mat_<double>::zeros(3, 1);
+
+  double cost = 0;
+  for (auto& sample : samples_)
+  {
+    std::vector<cv::Point3d> cam_centre_3d;
+    std::vector<cv::Point3d> lidar_centre_3d;
+
+    /*cam_centre_3d.push_back(sample.camera_centre);
+    auto lidar_centre_camera_frame = cv::Point3d(rot_trans * sample.lidar_centre);
+    lidar_centre_3d.push_back(lidar_centre_camera_frame); */
+    auto camera_centre_lidar_frame = cv::Point3d(rot_trans * sample.camera_centre);
+    cam_centre_3d.push_back(camera_centre_lidar_frame);
+    lidar_centre_3d.push_back(sample.lidar_centre);
+
+    std::vector<cv::Point2d> cam, lidar;
+    if (i_params.fisheye_model)
+    {
+      cv::fisheye::projectPoints(cam_centre_3d, cam, rvec, tvec, i_params.cameramat, i_params.distcoeff);
+      cv::fisheye::projectPoints(lidar_centre_3d, lidar, rvec, tvec, i_params.cameramat, i_params.distcoeff);
+    }
+    else
+    {
+      cv::projectPoints(cam_centre_3d, rvec, tvec, i_params.cameramat, i_params.distcoeff, cam);
+      cv::projectPoints(lidar_centre_3d, rvec, tvec, i_params.cameramat, i_params.distcoeff, lidar);
+    }
+    double error = cv::norm(cam[0] - lidar[0]);
+    if (error > cost)
+    {
+      cost = error;
+    }
+  }
+  return cost;
+}
+
 bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslationCost& c)
 {
   const double& e1 = p.rot.roll;
@@ -191,8 +223,11 @@ bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslation
   }
 
   double error_pix = *std::max_element(pixel_error.begin(), pixel_error.end());
+  double repro_cost = reprojectionCost(p);
+  // ROS_INFO_STREAM("Reprojection error - old: " << error_pix << ", new: " << repro_cost);
 
-  c.objective2 = rot_error + var + error_trans + error_pix;
+  // c.objective2 = rot_error + var + error_trans + error_pix;
+  c.objective2 = rot_error + var + error_trans + repro_cost;
 
   if (output2)
   {
@@ -368,6 +403,22 @@ bool Optimiser::optimise()
 {
   auto n = samples_.size();
   ROS_INFO_STREAM("Optimising " << n << " collected samples");
+  for (auto& sample : samples_)
+  {
+    ROS_INFO_STREAM("Sample");
+    ROS_INFO_STREAM("Camera normal:" << sample.camera_normal);
+    ROS_INFO_STREAM("Camera centre:" << sample.camera_centre);
+    for (auto& c : sample.camera_corners)
+    {
+      ROS_INFO_STREAM("Camera corner:" << c);
+    }
+    ROS_INFO_STREAM("Lidar normal:" << sample.lidar_normal);
+    ROS_INFO_STREAM("Lidar centre:" << sample.lidar_centre);
+    for (auto& c : sample.lidar_corners)
+    {
+      ROS_INFO_STREAM("Lidar corner:" << c);
+    }
+  }
   camera_normals_ = cv::Mat(n, 3, CV_64F);
   camera_centres_ = cv::Mat(n, 3, CV_64F);
   lidar_centres_ = cv::Mat(n, 3, CV_64F);
@@ -605,10 +656,7 @@ pcl::PointCloud<pcl::PointXYZIR> organizedPointcloud(pcl::PointCloud<pcl::PointX
   return (organized_pc);
 }
 */
-Optimiser::Optimiser()
+Optimiser::Optimiser(const initial_parameters_t& params) : i_params(params)
 {
-  ros::NodeHandle n;
-
-  loadParams(n, i_params);
 }
 }  // namespace cam_lidar_calibration
