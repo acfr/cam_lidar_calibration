@@ -6,58 +6,6 @@
 
 namespace cam_lidar_calibration
 {
-double colmap[50][3] = { { 0, 0, 0.5385 },
-                         { 0, 0, 0.6154 },
-                         { 0, 0, 0.6923 },
-                         { 0, 0, 0.7692 },
-                         { 0, 0, 0.8462 },
-                         { 0, 0, 0.9231 },
-                         { 0, 0, 1.0000 },
-                         { 0, 0.0769, 1.0000 },
-                         { 0, 0.1538, 1.0000 },
-                         { 0, 0.2308, 1.0000 },
-                         { 0, 0.3846, 1.0000 },
-                         { 0, 0.4615, 1.0000 },
-                         { 0, 0.5385, 1.0000 },
-                         { 0, 0.6154, 1.0000 },
-                         { 0, 0.6923, 1.0000 },
-                         { 0, 0.7692, 1.0000 },
-                         { 0, 0.8462, 1.0000 },
-                         { 0, 0.9231, 1.0000 },
-                         { 0, 1.0000, 1.0000 },
-                         { 0.0769, 1.0000, 0.9231 },
-                         { 0.1538, 1.0000, 0.8462 },
-                         { 0.2308, 1.0000, 0.7692 },
-                         { 0.3077, 1.0000, 0.6923 },
-                         { 0.3846, 1.0000, 0.6154 },
-                         { 0.4615, 1.0000, 0.5385 },
-                         { 0.5385, 1.0000, 0.4615 },
-                         { 0.6154, 1.0000, 0.3846 },
-                         { 0.6923, 1.0000, 0.3077 },
-                         { 0.7692, 1.0000, 0.2308 },
-                         { 0.8462, 1.0000, 0.1538 },
-                         { 0.9231, 1.0000, 0.0769 },
-                         { 1.0000, 1.0000, 0 },
-                         { 1.0000, 0.9231, 0 },
-                         { 1.0000, 0.8462, 0 },
-                         { 1.0000, 0.7692, 0 },
-                         { 1.0000, 0.6923, 0 },
-                         { 1.0000, 0.6154, 0 },
-                         { 1.0000, 0.5385, 0 },
-                         { 1.0000, 0.4615, 0 },
-                         { 1.0000, 0.3846, 0 },
-                         { 1.0000, 0.3077, 0 },
-                         { 1.0000, 0.2308, 0 },
-                         { 1.0000, 0.1538, 0 },
-                         { 1.0000, 0.0769, 0 },
-                         { 1.0000, 0, 0 },
-                         { 0.9231, 0, 0 },
-                         { 0.8462, 0, 0 },
-                         { 0.7692, 0, 0 },
-                         { 0.6923, 0, 0 } };
-
-void imageProjection(RotationTranslation rot_trans);
-
 cv::Mat operator*(const Rotation& lhs, const cv::Point3d& rhs)
 {
   using cv::Mat_;
@@ -335,20 +283,9 @@ void Optimiser::SO_report_generation(int generation_number,
                                      const EA::GenerationType<Rotation, RotationCost>& last_generation,
                                      const Rotation& best_genes)
 {
-  //  std::cout
-  //      <<"Generation ["<<generation_number<<"], "
-  //     <<"Best ="<<last_generation.best_total_cost<<", "
-  //    <<"Average ="<<last_generation.average_cost<<", "
-  //   <<"Best genes =("<<best_genes.to_string()<<")"<<", "
-  //  <<"Exe_time ="<<last_generation.exe_time
-  //  << std::endl;
   eul_t.rot.roll = best_genes.roll;
   eul_t.rot.pitch = best_genes.pitch;
   eul_t.rot.yaw = best_genes.yaw;
-
-  //  std::cout << "eul_t assign " << eul_t.roll << " "
-  //            << eul_t.pitch << " "
-  //            <<  eul_t.yaw << std::endl;
 }
 
 bool Optimiser::optimise()
@@ -528,48 +465,6 @@ std::vector<double> rotm2eul(cv::Mat mat)
                    sqrt(mat.at<double>(2, 1) * mat.at<double>(2, 1) + mat.at<double>(2, 2) * mat.at<double>(2, 2)));
   euler[2] = atan2(mat.at<double>(1, 0), mat.at<double>(0, 0));  // rotation about z axis: yaw
   return euler;
-}
-double tmpxC;
-double* Optimiser::convertToImagePoints(double x, double y, double z)
-{
-  tmpxC = x / z;
-  double tmpyC = y / z;
-  cv::Point2d planepointsC;
-
-  planepointsC.x = tmpxC;
-  planepointsC.y = tmpyC;
-
-  double r2 = tmpxC * tmpxC + tmpyC * tmpyC;
-
-  if (i_params.fisheye_model)
-  {
-    double r1 = pow(r2, 0.5);
-    double a0 = std::atan(r1);
-    double a1 =
-        a0 * (1 + i_params.distcoeff.at<double>(0) * pow(a0, 2) + i_params.distcoeff.at<double>(1) * pow(a0, 4) +
-              i_params.distcoeff.at<double>(2) * pow(a0, 6) + i_params.distcoeff.at<double>(3) * pow(a0, 8));
-    planepointsC.x = (a1 / r1) * tmpxC;
-    planepointsC.y = (a1 / r1) * tmpyC;
-    planepointsC.x = i_params.cameramat.at<double>(0, 0) * planepointsC.x + i_params.cameramat.at<double>(0, 2);
-    planepointsC.y = i_params.cameramat.at<double>(1, 1) * planepointsC.y + i_params.cameramat.at<double>(1, 2);
-  }
-  else  // For pinhole camera model
-  {
-    double tmpdist = 1 + i_params.distcoeff.at<double>(0) * r2 + i_params.distcoeff.at<double>(1) * r2 * r2 +
-                     i_params.distcoeff.at<double>(4) * r2 * r2 * r2;
-    planepointsC.x = tmpxC * tmpdist + 2 * i_params.distcoeff.at<double>(2) * tmpxC * tmpyC +
-                     i_params.distcoeff.at<double>(3) * (r2 + 2 * tmpxC * tmpxC);
-    planepointsC.y = tmpyC * tmpdist + i_params.distcoeff.at<double>(2) * (r2 + 2 * tmpyC * tmpyC) +
-                     2 * i_params.distcoeff.at<double>(3) * tmpxC * tmpyC;
-    planepointsC.x = i_params.cameramat.at<double>(0, 0) * planepointsC.x + i_params.cameramat.at<double>(0, 2);
-    planepointsC.y = i_params.cameramat.at<double>(1, 1) * planepointsC.y + i_params.cameramat.at<double>(1, 2);
-  }
-
-  double* img_coord = new double[2];
-  *(img_coord) = planepointsC.x;
-  *(img_coord + 1) = planepointsC.y;
-
-  return img_coord;
 }
 
 Optimiser::Optimiser(const initial_parameters_t& params) : i_params(params)

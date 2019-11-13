@@ -107,8 +107,6 @@ public:
   void init_genes2(RotationTranslation& p, const std::function<double(void)>& rnd01);
 
 private:
-  double* convertToImagePoints(double x, double y, double z);
-
   double perpendicularCost(const Rotation& rot);
   double normalAlignmentCost(const Rotation& rot);
   double reprojectionCost(const RotationTranslation& rot_trans);
@@ -124,12 +122,6 @@ private:
   Rotation eul;
   RotationTranslation eul_t, eul_it;
   initial_parameters_t i_params;
-
-  bool sensor_pair = 0;
-  bool output = 0;
-  bool output2 = 0;
-  static cv::Mat new_K;
-  ros::Subscriber calibdata_sub_;
 };
 
 std::vector<double> rotm2eul(cv::Mat);
