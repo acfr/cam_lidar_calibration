@@ -61,25 +61,28 @@ catkin_package(
   message_runtime
   )
 
-add_library(load_params src/load_params.cpp)
-target_link_libraries(load_params ${catkin_LIBRARIES} ${OpenCV_LIBS})
-
-add_executable(feature_extraction
-  src/feature_extractor.cpp
-  src/optimiser.cpp
-)
-
-target_link_libraries(feature_extraction load_params ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
-
 add_library(cam_lidar_calibration
-  src/cam_lidar_panel.cpp)
-target_link_libraries(cam_lidar_calibration Qt5::Widgets ${catkin_LIBRARIES})
+  src/cam_lidar_panel.cpp
+  src/feature_extractor.cpp
+  src/load_params.cpp
+  src/optimiser.cpp
+  )
+target_link_libraries(cam_lidar_calibration
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBS}
+  ${Eigen_LIBRARIES}
+  Qt5::Widgets
+  )
+
+add_executable(feature_extraction_node
+  src/feature_extraction_node.cpp
+  )
+target_link_libraries(feature_extraction_node cam_lidar_calibration ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
 
 
 ## Mark the nodelet library for installations
 install(TARGETS
-  load_params
-  feature_extraction
+  feature_extraction_node
   cam_lidar_calibration
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
@@ -105,3 +108,10 @@ install(DIRECTORY cfg/
 install(DIRECTORY rviz/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
   )
+
+## Add gtest based cpp test target and link libraries
+catkin_add_gtest(${PROJECT_NAME}-test
+  test/test_optimiser.cpp)
+if(TARGET ${PROJECT_NAME}-test)
+  target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
+endif()

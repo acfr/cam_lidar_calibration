@@ -1,3 +1,5 @@
+#include "cam_lidar_calibration/feature_extractor.h"
+
 #include <ros/ros.h>
 
 #include "cam_lidar_calibration/point_xyzir.h"
@@ -22,8 +24,6 @@
 #include <sensor_msgs/image_encodings.h>
 #include <visualization_msgs/MarkerArray.h>
 
-#include "cam_lidar_calibration/feature_extractor.h"
-
 using cv::findChessboardCorners;
 using cv::Mat_;
 using cv::Size;
@@ -31,34 +31,16 @@ using cv::TermCriteria;
 
 using PointCloud = pcl::PointCloud<pcl::PointXYZIR>;
 
-int main(int argc, char** argv)
-{
-  // Initialize Node and handles
-  ros::init(argc, argv, "FeatureExtractor");
-  ros::NodeHandle n;
-
-  cam_lidar_calibration::FeatureExtractor feature_extractor;
-  feature_extractor.bypassInit();
-  ros::Rate loop_rate(10);
-
-  while (ros::ok())
-  {
-    feature_extractor.visualiseSamples();
-    ros::spinOnce();
-    loop_rate.sleep();
-  }
-  return 0;
-}
-
 namespace cam_lidar_calibration
 {
-void FeatureExtractor::onInit()
+FeatureExtractor::FeatureExtractor()
 {
   // Creating ROS nodehandle
   ros::NodeHandle private_nh = ros::NodeHandle("~");
   ros::NodeHandle public_nh = ros::NodeHandle();
   ros::NodeHandle pnh = ros::NodeHandle("~");  // getMTPrivateNodeHandle();
   loadParams(public_nh, i_params);
+  optimiser_ = std::make_shared<Optimiser>(i_params);
   ROS_INFO("Input parameters loaded");
 
   it_.reset(new image_transport::ImageTransport(public_nh));
@@ -82,7 +64,7 @@ void FeatureExtractor::onInit()
   optimise_service_ = public_nh.advertiseService("optimiser", &FeatureExtractor::serviceCB, this);
   samples_pub_ = private_nh.advertise<visualization_msgs::MarkerArray>("collected_samples", 0);
   image_publisher = it_->advertise("camera_features", 1);
-  NODELET_INFO_STREAM("Camera Lidar Calibration");
+  ROS_INFO_STREAM("Camera Lidar Calibration");
 }
 
 bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res)
@@ -94,14 +76,17 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
       break;
     case Optimise::Request::DISCARD:
       ROS_INFO("Discarding last sample");
-      if (!optimiser_.samples_.empty())
+      if (!optimiser_->samples_.empty())
       {
-        optimiser_.samples_.pop_back();
+        optimiser_->samples_.pop_back();
       }
       break;
     case Optimise::Request::OPTIMISE:
-      ROS_INFO("Calling optimiser");
-      optimiser_.optimise();
+      if (!optimiser_->samples_.empty())
+      {
+        ROS_INFO("Calling optimiser");
+        optimiser_->optimise();
+      }
       break;
   }
 
@@ -139,7 +124,7 @@ void FeatureExtractor::visualiseSamples()
   visualization_msgs::Marker clear;
   clear.action = visualization_msgs::Marker::DELETEALL;
   vis_array.markers.push_back(clear);
-  for (auto& sample : optimiser_.samples_)
+  for (auto& sample : optimiser_->samples_)
   {
     visualization_msgs::Marker lidar_board, lidar_normal;
 
@@ -174,9 +159,9 @@ void FeatureExtractor::visualiseSamples()
     for (auto& c : sample.lidar_corners)
     {
       geometry_msgs::Point p;
-      p.x = c.x;
-      p.y = c.y;
-      p.z = c.z;
+      p.x = c.x / 1000;
+      p.y = c.y / 1000;
+      p.z = c.z / 1000;
       lidar_board.points.push_back(p);
     }
     lidar_board.points.push_back(lidar_board.points[0]);
@@ -310,7 +295,7 @@ FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
 
   cv::Mat rmat;
   cv::Rodrigues(rvec, rmat);
-  cv::Mat z = cv::Mat(cv::Point3d(0., 0., 1.));
+  cv::Mat z = cv::Mat(cv::Point3d(0., 0., -1.));
   auto chessboard_normal = rmat * z;
 
   std::vector<cv::Point3d> corner_vectors;
@@ -510,20 +495,21 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     pcl::lineWithLineIntersection(top_right, bottom_right, corner);
     cv::Point3d right(corner[0], corner[1], corner[2]);
     // Add points in same order as the paper
-    sample.lidar_corners.push_back(right);
-    sample.lidar_corners.push_back(top);
-    sample.lidar_corners.push_back(left);
-    sample.lidar_corners.push_back(bottom);
+    // Convert to mm
+    sample.lidar_corners.push_back(right * 1000);
+    sample.lidar_corners.push_back(top * 1000);
+    sample.lidar_corners.push_back(left * 1000);
+    sample.lidar_corners.push_back(bottom * 1000);
 
     for (const auto& p : sample.lidar_corners)
     {
-      // Average the corners, and convert to mm
-      sample.lidar_centre.x += p.x / 4.0 * 1000.;
-      sample.lidar_centre.y += p.y / 4.0 * 1000.;
-      sample.lidar_centre.z += p.z / 4.0 * 1000.;
+      // Average the corners
+      sample.lidar_centre.x += p.x / 4.0;
+      sample.lidar_centre.y += p.y / 4.0;
+      sample.lidar_centre.z += p.z / 4.0;
     }
     // Push this sample to the optimiser
-    optimiser_.samples_.push_back(sample);
+    optimiser_->samples_.push_back(sample);
   }  // if (flag == Optimise::Request::CAPTURE)
 }  // End of extractRegionOfInterest
 
