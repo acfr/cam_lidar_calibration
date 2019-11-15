@@ -15,7 +15,7 @@ struct Rotation
   double roll;  // Rotation optimization variables
   double pitch;
   double yaw;
-  std::string to_string() const
+  operator const std::string() const
   {
     return std::string("{") + "roll:" + std::to_string(roll) + ", pitch:" + std::to_string(pitch) +
            ", yaw:" + std::to_string(yaw) + "}";
@@ -45,7 +45,7 @@ struct RotationTranslation
   double x;
   double y;
   double z;
-  std::string to_string() const
+  operator const std::string() const
   {
     return std::string("{") + "roll:" + std::to_string(rot.roll) + ", pitch:" + std::to_string(rot.pitch) +
            ", yaw:" + std::to_string(rot.yaw) + ", x:" + std::to_string(x) + ", y:" + std::to_string(y) +
@@ -75,8 +75,8 @@ struct OptimisationSample
   std::vector<cv::Point3d> lidar_corners;
 };
 
-typedef EA::Genetic<Rotation, RotationCost> GA_Type;
-typedef EA::Genetic<RotationTranslation, RotationTranslationCost> GA_Type2;
+typedef EA::Genetic<Rotation, RotationCost> GA_Rot_t;
+typedef EA::Genetic<RotationTranslation, RotationTranslationCost> GA_Rot_Trans_t;
 
 class Optimiser
 {
@@ -87,24 +87,31 @@ public:
   bool optimise();
   std::vector<OptimisationSample> samples_;
 
+  // Rotation only
   void SO_report_generation(int generation_number, const EA::GenerationType<Rotation, RotationCost>& last_generation,
                             const Rotation& best_genes);
-  double calculate_SO_total_fitness(const GA_Type::thisChromosomeType& X);
-  Rotation crossover(const Rotation& X1, const Rotation& X2, const std::function<double(void)>& rnd01);
-  Rotation mutate(const Rotation& X_base, const std::function<double(void)>& rnd01, double shrink_scale);
+  double calculate_SO_total_fitness(const GA_Rot_t::thisChromosomeType& X);
+  Rotation crossover(const Rotation& X1, const Rotation& X2, const std::function<double(void)>& rnd);
+  Rotation mutate(const Rotation& X_base, const std::function<double(void)>& rnd, const Rotation& initial_rotation,
+                  const double angle_increment, const double shrink_scale);
   bool eval_solution(const Rotation& p, RotationCost& c);
-  void init_genes(Rotation& p, const std::function<double(void)>& rnd01);
+  void init_genes(Rotation& p, const std::function<double(void)>& rnd, const Rotation& initial_rotation,
+                  double increment);
 
-  void SO_report_generation2(int generation_number,
-                             const EA::GenerationType<RotationTranslation, RotationTranslationCost>& last_generation,
-                             const RotationTranslation& best_genes);
-  double calculate_SO_total_fitness2(const GA_Type2::thisChromosomeType& X);
-  RotationTranslation crossover2(const RotationTranslation& X1, const RotationTranslation& X2,
-                                 const std::function<double(void)>& rnd01);
-  RotationTranslation mutate2(const RotationTranslation& X_base, const std::function<double(void)>& rnd01,
-                              double shrink_scale);
-  bool eval_solution2(const RotationTranslation& p, RotationTranslationCost& c);
-  void init_genes2(RotationTranslation& p, const std::function<double(void)>& rnd01);
+  // Rotation and translation
+  void SO_report_generation(int generation_number,
+                            const EA::GenerationType<RotationTranslation, RotationTranslationCost>& last_generation,
+                            const RotationTranslation& best_genes);
+  double calculate_SO_total_fitness(const GA_Rot_Trans_t::thisChromosomeType& X);
+  RotationTranslation crossover(const RotationTranslation& X1, const RotationTranslation& X2,
+                                const std::function<double(void)>& rnd);
+  RotationTranslation mutate(const RotationTranslation& X_base, const std::function<double(void)>& rnd,
+                             const RotationTranslation& initial_rotation_translation, const double angle_increment,
+                             const double translation_increment, const double shrink_scale);
+  bool eval_solution(const RotationTranslation& p, RotationTranslationCost& c);
+  void init_genes(RotationTranslation& p, const std::function<double(void)>& rnd,
+                  const RotationTranslation& initial_rotation_translation, double angle_increment,
+                  double translation_increment);
 
 private:
   double perpendicularCost(const Rotation& rot);
@@ -112,8 +119,10 @@ private:
   double reprojectionCost(const RotationTranslation& rot_trans);
   double centreAlignmentCost(const RotationTranslation& rot_trans);
 
-  Rotation eul;
-  RotationTranslation eul_t, eul_it;
+  // Rotation initial_rot;
+  Rotation best_rotation_;
+  // RotationTranslation initial_rot_trans;
+  RotationTranslation best_rotation_translation_;
   initial_parameters_t i_params;
 };
 

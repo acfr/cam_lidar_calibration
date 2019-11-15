@@ -8,8 +8,6 @@ namespace cam_lidar_calibration
 {
 cv::Mat operator*(const Rotation& lhs, const cv::Point3d& rhs)
 {
-  using cv::Mat_;
-
   cv::Mat mat = cv::Mat(rhs).reshape(1);
   // Combined rotation matrix
   return lhs.toMat() * mat;
@@ -23,27 +21,21 @@ cv::Mat operator*(const RotationTranslation& lhs, const cv::Point3d& rhs)
   return cv::Mat(rotated).reshape(1);
 }
 
-void Optimiser::init_genes2(RotationTranslation& p, const std::function<double(void)>& rnd01)
+void Optimiser::init_genes(RotationTranslation& p, const std::function<double(void)>& rnd,
+                           const RotationTranslation& initial_rot_trans, double angle_increment,
+                           double translation_increment)
 {
-  std::vector<double> pi_vals;
-  pi_vals.push_back(M_PI / 18);
-  pi_vals.push_back(-M_PI / 18);
-  int RandIndex = rand() % 2;
-  p.rot.roll = eul_t.rot.roll + pi_vals.at(RandIndex) * rnd01();
-  RandIndex = rand() % 2;
-  p.rot.pitch = eul_t.rot.pitch + pi_vals.at(RandIndex) * rnd01();
-  RandIndex = rand() % 2;
-  p.rot.yaw = eul_t.rot.yaw + pi_vals.at(RandIndex) * rnd01();
+  init_genes(p.rot, rnd, initial_rot_trans.rot, angle_increment);
 
   std::vector<double> trans_vals;
-  trans_vals.push_back(0.05);
-  trans_vals.push_back(-0.05);
+  trans_vals.push_back(translation_increment);
+  trans_vals.push_back(-translation_increment);
+  int RandIndex = rand() % 2;
+  p.x = initial_rot_trans.x + trans_vals.at(RandIndex) * rnd();
   RandIndex = rand() % 2;
-  p.x = eul_t.x + trans_vals.at(RandIndex) * rnd01();
+  p.y = initial_rot_trans.y + trans_vals.at(RandIndex) * rnd();
   RandIndex = rand() % 2;
-  p.y = eul_t.y + trans_vals.at(RandIndex) * rnd01();
-  RandIndex = rand() % 2;
-  p.z = eul_t.z + trans_vals.at(RandIndex) * rnd01();
+  p.z = initial_rot_trans.z + trans_vals.at(RandIndex) * rnd();
 }
 
 double Optimiser::perpendicularCost(const Rotation& rot)
@@ -138,7 +130,7 @@ double Optimiser::centreAlignmentCost(const RotationTranslation& rot_trans)
   return abs_mean + stddev;
 }
 
-bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslationCost& c)
+bool Optimiser::eval_solution(const RotationTranslation& p, RotationTranslationCost& c)
 {
   double perpendicular_cost = perpendicularCost(p.rot);
   double normal_align_cost = normalAlignmentCost(p.rot);
@@ -150,57 +142,49 @@ bool Optimiser::eval_solution2(const RotationTranslation& p, RotationTranslation
   return true;  // solution is accepted
 }
 
-RotationTranslation Optimiser::mutate2(const RotationTranslation& X_base, const std::function<double(void)>& rnd01,
-                                       double shrink_scale)
+RotationTranslation Optimiser::mutate(const RotationTranslation& X_base, const std::function<double(void)>& rnd,
+                                      const RotationTranslation& initial_rotation_translation,
+                                      const double angle_increment, const double translation_increment,
+                                      const double shrink_scale)
 {
   RotationTranslation X_new;
+  X_new.rot = mutate(X_base.rot, rnd, initial_rotation_translation.rot, angle_increment, shrink_scale);
   bool in_range;
   do
   {
     in_range = true;
     X_new = X_base;
-    X_new.rot.roll += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range =
-        in_range && (X_new.rot.roll >= (eul_t.rot.roll - M_PI / 18) && X_new.rot.roll < (eul_t.rot.roll + M_PI / 18));
-    X_new.rot.pitch += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range &&
-               (X_new.rot.pitch >= (eul_t.rot.pitch - M_PI / 18) && X_new.rot.pitch < (eul_t.rot.pitch + M_PI / 18));
-    X_new.rot.yaw += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range =
-        in_range && (X_new.rot.yaw >= (eul_t.rot.yaw - M_PI / 18) && X_new.rot.yaw < (eul_t.rot.yaw + M_PI / 18));
-
-    X_new.x += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.x >= (eul_t.x - 0.05) && X_new.x < (eul_t.x + 0.05));
-    X_new.y += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.y >= (eul_t.y - 0.05) && X_new.y < (eul_t.y + 0.05));
-    X_new.z += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.z >= (eul_t.z - 0.05) && X_new.z < (eul_t.z + 0.05));
+    X_new.x += 0.2 * (rnd() - rnd()) * shrink_scale;
+    in_range = in_range && (X_new.x >= (initial_rotation_translation.x - 0.05) &&
+                            X_new.x < (initial_rotation_translation.x + 0.05));
+    X_new.y += 0.2 * (rnd() - rnd()) * shrink_scale;
+    in_range = in_range && (X_new.y >= (initial_rotation_translation.y - 0.05) &&
+                            X_new.y < (initial_rotation_translation.y + 0.05));
+    X_new.z += 0.2 * (rnd() - rnd()) * shrink_scale;
+    in_range = in_range && (X_new.z >= (initial_rotation_translation.z - 0.05) &&
+                            X_new.z < (initial_rotation_translation.z + 0.05));
 
   } while (!in_range);
   return X_new;
 }
 
-RotationTranslation Optimiser::crossover2(const RotationTranslation& X1, const RotationTranslation& X2,
-                                          const std::function<double(void)>& rnd01)
+RotationTranslation Optimiser::crossover(const RotationTranslation& X1, const RotationTranslation& X2,
+                                         const std::function<double(void)>& rnd)
 {
   RotationTranslation X_new;
   double r;
-  r = rnd01();
-  X_new.rot.roll = r * X1.rot.roll + (1.0 - r) * X2.rot.roll;
-  r = rnd01();
-  X_new.rot.pitch = r * X1.rot.pitch + (1.0 - r) * X2.rot.pitch;
-  r = rnd01();
-  X_new.rot.yaw = r * X1.rot.yaw + (1.0 - r) * X2.rot.yaw;
-  r = rnd01();
+  r = rnd();
+  X_new.rot = crossover(X1.rot, X2.rot, rnd);
+
   X_new.x = r * X1.x + (1.0 - r) * X2.x;
-  r = rnd01();
+  r = rnd();
   X_new.y = r * X1.y + (1.0 - r) * X2.y;
-  r = rnd01();
+  r = rnd();
   X_new.z = r * X1.z + (1.0 - r) * X2.z;
   return X_new;
 }
 
-double Optimiser::calculate_SO_total_fitness2(const GA_Type2::thisChromosomeType& X)
+double Optimiser::calculate_SO_total_fitness(const GA_Rot_Trans_t::thisChromosomeType& X)
 {
   // finalize the cost
   double final_cost = 0.0;
@@ -209,29 +193,28 @@ double Optimiser::calculate_SO_total_fitness2(const GA_Type2::thisChromosomeType
 }
 
 // A function to show/store the results of each generation.
-void Optimiser::SO_report_generation2(
+void Optimiser::SO_report_generation(
     int generation_number, const EA::GenerationType<RotationTranslation, RotationTranslationCost>& last_generation,
     const RotationTranslation& best_genes)
 {
-  eul_it.rot.roll = best_genes.rot.roll;
-  eul_it.rot.pitch = best_genes.rot.pitch;
-  eul_it.rot.yaw = best_genes.rot.yaw;
-  eul_it.x = best_genes.x;
-  eul_it.y = best_genes.y;
-  eul_it.z = best_genes.z;
+  best_rotation_translation_.rot = best_genes.rot;
+  best_rotation_translation_.x = best_genes.x;
+  best_rotation_translation_.y = best_genes.y;
+  best_rotation_translation_.z = best_genes.z;
 }
 
-void Optimiser::init_genes(Rotation& p, const std::function<double(void)>& rnd01)
+void Optimiser::init_genes(Rotation& p, const std::function<double(void)>& rnd, const Rotation& initial_rotation,
+                           double increment)
 {
   std::vector<double> pi_vals;
-  pi_vals.push_back(M_PI / 8);
-  pi_vals.push_back(-M_PI / 8);
+  pi_vals.push_back(increment);
+  pi_vals.push_back(-increment);
   int RandIndex = rand() % 2;
-  p.roll = eul.roll + pi_vals.at(RandIndex) * rnd01();
+  p.roll = initial_rotation.roll + pi_vals.at(RandIndex) * rnd();
   RandIndex = rand() % 2;
-  p.pitch = eul.pitch + pi_vals.at(RandIndex) * rnd01();
+  p.pitch = initial_rotation.pitch + pi_vals.at(RandIndex) * rnd();
   RandIndex = rand() % 2;
-  p.yaw = eul.yaw + pi_vals.at(RandIndex) * rnd01();
+  p.yaw = initial_rotation.yaw + pi_vals.at(RandIndex) * rnd();
 }
 
 bool Optimiser::eval_solution(const Rotation& p, RotationCost& c)
@@ -241,7 +224,8 @@ bool Optimiser::eval_solution(const Rotation& p, RotationCost& c)
   return true;  // solution is accepted
 }
 
-Rotation Optimiser::mutate(const Rotation& X_base, const std::function<double(void)>& rnd01, double shrink_scale)
+Rotation Optimiser::mutate(const Rotation& X_base, const std::function<double(void)>& rnd,
+                           const Rotation& initial_rotation, const double angle_increment, double shrink_scale)
 {
   Rotation X_new;
   bool in_range;
@@ -249,29 +233,32 @@ Rotation Optimiser::mutate(const Rotation& X_base, const std::function<double(vo
   {
     in_range = true;
     X_new = X_base;
-    X_new.roll += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.roll >= (eul.roll - M_PI / 8) && X_new.roll < (eul.roll + M_PI / 8));
-    X_new.pitch += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.pitch >= (eul.pitch - M_PI / 8) && X_new.pitch < (eul.pitch + M_PI / 8));
-    X_new.yaw += 0.2 * (rnd01() - rnd01()) * shrink_scale;
-    in_range = in_range && (X_new.yaw >= (eul.yaw - M_PI / 8) && X_new.yaw < (eul.yaw + M_PI / 8));
+    X_new.roll += 0.2 * (rnd() - rnd()) * shrink_scale;
+    in_range = in_range && (X_new.roll >= (initial_rotation.roll - angle_increment) &&
+                            X_new.roll < (initial_rotation.roll + angle_increment));
+    X_new.pitch += 0.2 * (rnd() - rnd()) * shrink_scale;
+    in_range = in_range && (X_new.pitch >= (initial_rotation.pitch - angle_increment) &&
+                            X_new.pitch < (initial_rotation.pitch + angle_increment));
+    X_new.yaw += 0.2 * (rnd() - rnd()) * shrink_scale;
+    in_range = in_range && (X_new.yaw >= (initial_rotation.yaw - angle_increment) &&
+                            X_new.yaw < (initial_rotation.yaw + angle_increment));
   } while (!in_range);
   return X_new;
 }
 
-Rotation Optimiser::crossover(const Rotation& X1, const Rotation& X2, const std::function<double(void)>& rnd01)
+Rotation Optimiser::crossover(const Rotation& X1, const Rotation& X2, const std::function<double(void)>& rnd)
 {
   Rotation X_new;
-  double r = rnd01();
+  double r = rnd();
   X_new.roll = r * X1.roll + (1.0 - r) * X2.roll;
-  r = rnd01();
+  r = rnd();
   X_new.pitch = r * X1.pitch + (1.0 - r) * X2.pitch;
-  r = rnd01();
+  r = rnd();
   X_new.yaw = r * X1.yaw + (1.0 - r) * X2.yaw;
   return X_new;
 }
 
-double Optimiser::calculate_SO_total_fitness(const GA_Type::thisChromosomeType& X)
+double Optimiser::calculate_SO_total_fitness(const GA_Rot_t::thisChromosomeType& X)
 {
   double final_cost = 0.0;  // finalize the cost
   final_cost += X.middle_costs.objective1;
@@ -283,9 +270,9 @@ void Optimiser::SO_report_generation(int generation_number,
                                      const EA::GenerationType<Rotation, RotationCost>& last_generation,
                                      const Rotation& best_genes)
 {
-  eul_t.rot.roll = best_genes.roll;
-  eul_t.rot.pitch = best_genes.pitch;
-  eul_t.rot.yaw = best_genes.yaw;
+  best_rotation_.roll = best_genes.roll;
+  best_rotation_.pitch = best_genes.pitch;
+  best_rotation_.yaw = best_genes.yaw;
 }
 
 bool Optimiser::optimise()
@@ -334,27 +321,41 @@ bool Optimiser::optimise()
   std::vector<double> euler;
   euler = rotm2eul(UNR);  // rpy wrt original axes
   ROS_INFO_STREAM("Analytical Euler angles " << euler.at(0) << " " << euler.at(1) << " " << euler.at(2));
-  eul.roll = euler[0];
-  eul.pitch = euler[1];
-  eul.yaw = euler[2];
+
+  const Rotation initial_rotation{ euler[0], euler[1], euler[2] };
 
   EA::Chronometer timer;
   timer.tic();
 
+  double rotation_increment = M_PI / 8.;
   namespace ph = std::placeholders;
   // Optimization for rotation alone
-  GA_Type ga_obj;
+  GA_Rot_t ga_obj;
   ga_obj.problem_mode = EA::GA_MODE::SOGA;
   ga_obj.multi_threading = false;
   ga_obj.verbose = false;
   ga_obj.population = 200;
   ga_obj.generation_max = 1000;
-  ga_obj.calculate_SO_total_fitness = std::bind(&Optimiser::calculate_SO_total_fitness, this, ph::_1);
-  ga_obj.init_genes = std::bind(&Optimiser::init_genes, this, ph::_1, ph::_2);
-  ga_obj.eval_solution = std::bind(&Optimiser::eval_solution, this, ph::_1, ph::_2);
-  ga_obj.mutate = std::bind(&Optimiser::mutate, this, ph::_1, ph::_2, ph::_3);
-  ga_obj.crossover = std::bind(&Optimiser::crossover, this, ph::_1, ph::_2, ph::_3);
-  ga_obj.SO_report_generation = std::bind(&Optimiser::SO_report_generation, this, ph::_1, ph::_2, ph::_3);
+  ga_obj.calculate_SO_total_fitness = [&](const GA_Rot_t::thisChromosomeType& X) -> double {
+    return this->calculate_SO_total_fitness(X);
+  };
+  ga_obj.init_genes = [&, initial_rotation, rotation_increment](Rotation& p,
+                                                                const std::function<double(void)>& rnd) -> void {
+    this->init_genes(p, rnd, initial_rotation, rotation_increment);
+  };
+  ga_obj.eval_solution = [&](const Rotation& r, RotationCost& c) -> bool { return this->eval_solution(r, c); };
+  ga_obj.mutate = [&, initial_rotation, rotation_increment](
+                      const Rotation& X_base, const std::function<double(void)>& rnd, double shrink_scale) -> Rotation {
+    return this->mutate(X_base, rnd, initial_rotation, rotation_increment, shrink_scale);
+  };
+  ga_obj.crossover = [&](const Rotation& X1, const Rotation& X2, const std::function<double(void)>& rnd) {
+    return this->crossover(X1, X2, rnd);
+  };
+  ga_obj.SO_report_generation = [&](int generation_number,
+                                    const EA::GenerationType<Rotation, RotationCost>& last_generation,
+                                    const Rotation& best_genes) -> void {
+    this->SO_report_generation(generation_number, last_generation, best_genes);
+  };
   ga_obj.best_stall_max = 100;
   ga_obj.average_stall_max = 100;
   ga_obj.tol_stall_average = 1e-8;
@@ -367,8 +368,9 @@ bool Optimiser::optimise()
   ga_obj.solve();
 
   // Optimized rotation
+  // Reset starting point of rotation genes
   tf::Matrix3x3 rot;
-  rot.setRPY(eul_t.rot.roll, eul_t.rot.pitch, eul_t.rot.yaw);
+  rot.setRPY(best_rotation_.roll, best_rotation_.pitch, best_rotation_.yaw);
   cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
                      rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
   // Analytical Translation
@@ -377,70 +379,92 @@ bool Optimiser::optimise()
   cv::Mat summed_diff;
   cv::reduce(trans_diff, summed_diff, 1, CV_REDUCE_SUM, CV_64F);
   summed_diff = summed_diff / trans_diff.cols;
-  eul_t.x = summed_diff.at<double>(0);
-  eul_t.y = summed_diff.at<double>(1);
-  eul_t.z = summed_diff.at<double>(2);
-  ROS_INFO_STREAM("Rotation and Translation after first optimization " << eul_t.rot.roll << " " << eul_t.rot.pitch
-                                                                       << " " << eul_t.rot.yaw << " " << eul_t.x << " "
-                                                                       << eul_t.y << " " << eul_t.z);
 
+  const RotationTranslation initial_rotation_translation{ best_rotation_, summed_diff.at<double>(0),
+                                                          summed_diff.at<double>(1), summed_diff.at<double>(2) };
+
+  ROS_INFO_STREAM("Rotation and Translation after first optimization "
+                  << initial_rotation_translation.rot.roll << " " << initial_rotation_translation.rot.pitch << " "
+                  << initial_rotation_translation.rot.yaw << " " << initial_rotation_translation.x << " "
+                  << initial_rotation_translation.y << " " << initial_rotation_translation.z);
+
+  rotation_increment = M_PI / 18.;
+  constexpr double translation_increment = 0.05;
   // extrinsics stored the vector of extrinsic parameters in every iteration
   std::vector<std::vector<double>> extrinsics;
   for (int i = 0; i < 10; i++)
   {
     // Joint optimization for Rotation and Translation (Perform this 10 times and take the average of the extrinsics)
-    GA_Type2 ga_obj2;
-    ga_obj2.problem_mode = EA::GA_MODE::SOGA;
-    ga_obj2.multi_threading = false;
-    ga_obj2.verbose = false;
-    ga_obj2.population = 200;
-    ga_obj2.generation_max = 1000;
-    ga_obj2.calculate_SO_total_fitness = std::bind(&Optimiser::calculate_SO_total_fitness2, this, ph::_1);
-    ga_obj2.init_genes = std::bind(&Optimiser::init_genes2, this, ph::_1, ph::_2);
-    ga_obj2.eval_solution = std::bind(&Optimiser::eval_solution2, this, ph::_1, ph::_2);
-    ga_obj2.mutate = std::bind(&Optimiser::mutate2, this, ph::_1, ph::_2, ph::_3);
-    ga_obj2.crossover = std::bind(&Optimiser::crossover2, this, ph::_1, ph::_2, ph::_3);
-    ga_obj2.SO_report_generation = std::bind(&Optimiser::SO_report_generation2, this, ph::_1, ph::_2, ph::_3);
-    ga_obj2.best_stall_max = 100;
-    ga_obj2.average_stall_max = 100;
-    ga_obj2.tol_stall_average = 1e-8;
-    ga_obj2.tol_stall_best = 1e-8;
-    ga_obj2.elite_count = 10;
-    ga_obj2.crossover_fraction = 0.8;
-    ga_obj2.mutation_rate = 0.2;
-    ga_obj2.best_stall_max = 10;
-    ga_obj2.elite_count = 10;
-    ga_obj2.solve();
+    GA_Rot_Trans_t ga_rot_trans;
+    ga_rot_trans.problem_mode = EA::GA_MODE::SOGA;
+    ga_rot_trans.multi_threading = false;
+    ga_rot_trans.verbose = false;
+    ga_rot_trans.population = 200;
+    ga_rot_trans.generation_max = 1000;
+    ga_rot_trans.calculate_SO_total_fitness = [&](const GA_Rot_Trans_t::thisChromosomeType& X) -> double {
+      return this->calculate_SO_total_fitness(X);
+    };
+    ga_rot_trans.init_genes = [&, initial_rotation_translation, rotation_increment, translation_increment](
+                                  RotationTranslation& p, const std::function<double(void)>& rnd) -> void {
+      this->init_genes(p, rnd, initial_rotation_translation, rotation_increment, translation_increment);
+    };
+    ga_rot_trans.eval_solution = [&](const RotationTranslation& rt, RotationTranslationCost& c) -> bool {
+      return this->eval_solution(rt, c);
+    };
+    ga_rot_trans.mutate = [&, initial_rotation_translation, rotation_increment, translation_increment](
+                              const RotationTranslation& X_base, const std::function<double(void)>& rnd,
+                              double shrink_scale) -> RotationTranslation {
+      return this->mutate(X_base, rnd, initial_rotation_translation, rotation_increment, translation_increment,
+                          shrink_scale);
+    };
+    ga_rot_trans.crossover = [&](const RotationTranslation& X1, const RotationTranslation& X2,
+                                 const std::function<double(void)>& rnd) { return this->crossover(X1, X2, rnd); };
+    ga_rot_trans.SO_report_generation =
+        [&](int generation_number,
+            const EA::GenerationType<RotationTranslation, RotationTranslationCost>& last_generation,
+            const RotationTranslation& best_genes) -> void {
+      this->SO_report_generation(generation_number, last_generation, best_genes);
+    };
+    ga_rot_trans.best_stall_max = 100;
+    ga_rot_trans.average_stall_max = 100;
+    ga_rot_trans.tol_stall_average = 1e-8;
+    ga_rot_trans.tol_stall_best = 1e-8;
+    ga_rot_trans.elite_count = 10;
+    ga_rot_trans.crossover_fraction = 0.8;
+    ga_rot_trans.mutation_rate = 0.2;
+    ga_rot_trans.best_stall_max = 10;
+    ga_rot_trans.elite_count = 10;
+    ga_rot_trans.solve();
     std::vector<double> ex_it;
-    ex_it.push_back(eul_it.rot.roll);
-    ex_it.push_back(eul_it.rot.pitch);
-    ex_it.push_back(eul_it.rot.yaw);
-    ex_it.push_back(eul_it.x);
-    ex_it.push_back(eul_it.y);
-    ex_it.push_back(eul_it.z);
+    ex_it.push_back(best_rotation_translation_.rot.roll);
+    ex_it.push_back(best_rotation_translation_.rot.pitch);
+    ex_it.push_back(best_rotation_translation_.rot.yaw);
+    ex_it.push_back(best_rotation_translation_.x);
+    ex_it.push_back(best_rotation_translation_.y);
+    ex_it.push_back(best_rotation_translation_.z);
     extrinsics.push_back(ex_it);
   }
   // Perform the average operation
   double e_x = 0.0;
   double e_y = 0.0;
   double e_z = 0.0;
-  double e_e1 = 0.0;
-  double e_e2 = 0.0;
-  double e_e3 = 0.0;
+  double e_pitch = 0.0;
+  double e_roll = 0.0;
+  double e_yaw = 0.0;
   for (int i = 0; i < 10; i++)
   {
-    e_e1 += extrinsics[i][0];
-    e_e2 += extrinsics[i][1];
-    e_e3 += extrinsics[i][2];
+    e_pitch += extrinsics[i][0];
+    e_roll += extrinsics[i][1];
+    e_yaw += extrinsics[i][2];
     e_x += extrinsics[i][3];
     e_y += extrinsics[i][4];
     e_z += extrinsics[i][5];
   }
 
   RotationTranslation rot_trans;
-  rot_trans.rot.roll = e_e1 / 10;
-  rot_trans.rot.pitch = e_e2 / 10;
-  rot_trans.rot.yaw = e_e3 / 10;
+  rot_trans.rot.roll = e_pitch / 10;
+  rot_trans.rot.pitch = e_roll / 10;
+  rot_trans.rot.yaw = e_yaw / 10;
   rot_trans.x = e_x / 10;
   rot_trans.y = e_y / 10;
   rot_trans.z = e_z / 10;
