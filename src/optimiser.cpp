@@ -385,8 +385,8 @@ bool Optimiser::optimise()
 
   ROS_INFO_STREAM("Rotation and Translation after first optimization "
                   << initial_rotation_translation.rot.roll << " " << initial_rotation_translation.rot.pitch << " "
-                  << initial_rotation_translation.rot.yaw << " " << initial_rotation_translation.x << " "
-                  << initial_rotation_translation.y << " " << initial_rotation_translation.z);
+                  << initial_rotation_translation.rot.yaw << " " << initial_rotation_translation.x / 1000.0 << " "
+                  << initial_rotation_translation.y / 1000.0 << " " << initial_rotation_translation.z / 1000.0);
 
   rotation_increment = M_PI / 18.;
   constexpr double translation_increment = 0.05;
@@ -470,7 +470,7 @@ bool Optimiser::optimise()
   rot_trans.z = e_z / 10;
   ROS_INFO_STREAM("Extrinsic Parameters "
                   << " " << rot_trans.rot.roll << " " << rot_trans.rot.pitch << " " << rot_trans.rot.yaw << " "
-                  << rot_trans.x << " " << rot_trans.y << " " << rot_trans.z);
+                  << rot_trans.x / 1000.0 << " " << rot_trans.y / 1000.0 << " " << rot_trans.z / 1000.0);
   ROS_INFO_STREAM("The problem was optimised in " << timer.toc() << " seconds");
 
   return true;
