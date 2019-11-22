@@ -104,10 +104,10 @@ void FeatureExtractor::publishBoardPointCloud()
 {
   // Publish collected board clouds
   PointCloud pc;
+  pc.header.frame_id = lidar_frame_;
   for (auto board : pc_samples_)
   {
     pc += *board;
-    pc.header = board->header;
   }
   board_cloud_pub_.publish(pc);
 }
