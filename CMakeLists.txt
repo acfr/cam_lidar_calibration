@@ -37,10 +37,10 @@ add_definitions(-DQT_NO_KEYWORDS)
 
 set(CMAKE_AUTOMOC ON)
 
-add_message_files(
-  FILES
-  extrinsics.msg
-  )
+#add_message_files(
+#  FILES
+#  extrinsics.msg
+#  )
 add_service_files(
   FILES
   Optimise.srv

@@ -78,5 +78,4 @@ private:
   boost::shared_ptr<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>> server;
 };
 
-// PLUGINLIB_EXPORT_CLASS(extrinsic_calibration::FeatureExtractor, nodelet::Nodelet);
 }  // namespace cam_lidar_calibration
