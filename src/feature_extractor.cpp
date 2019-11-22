@@ -92,6 +92,11 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
   }
   publishBoardPointCloud();
   flag = req.operation;  // read flag published by rviz calibration panel
+  // Wait for operation to complete
+  while (flag == Optimise::Request::CAPTURE)
+  {
+  }
+  res.samples = optimiser_->samples_.size();
   return true;
 }
 
@@ -443,8 +448,6 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
   if (flag == Optimise::Request::CAPTURE)
   {
-    flag = 0;  // Reset the capture flag
-
     ROS_INFO("Processing sample");
 
     auto [corner_vectors, chessboard_normal] = locateChessboard(image);
@@ -524,6 +527,8 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
     }
     // Push this sample to the optimiser
     optimiser_->samples_.push_back(sample);
+    flag = Optimise::Request::READY;  // Reset the capture flag
+
   }  // if (flag == Optimise::Request::CAPTURE)
 }  // End of extractRegionOfInterest
 

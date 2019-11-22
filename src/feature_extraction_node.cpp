@@ -9,10 +9,12 @@ int main(int argc, char** argv)
   cam_lidar_calibration::FeatureExtractor feature_extractor;
   ros::Rate loop_rate(10);
 
+  ros::AsyncSpinner spinner(4);
+  spinner.start();
+
   while (ros::ok())
   {
     feature_extractor.visualiseSamples();
-    ros::spinOnce();
     loop_rate.sleep();
   }
   return 0;

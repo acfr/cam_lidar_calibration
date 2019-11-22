@@ -15,6 +15,7 @@ CamLidarPanel::CamLidarPanel(QWidget* parent) : rviz::Panel(parent)
   discard_button_ = new QPushButton("Discard last sample");
   connect(discard_button_, SIGNAL(clicked()), this, SLOT(discardSample()));
   optimise_button_ = new QPushButton("Optimise");
+  optimise_button_->setEnabled(false);
   connect(optimise_button_, SIGNAL(clicked()), this, SLOT(optimise()));
 
   button_layout->addWidget(capture_button_);
@@ -29,6 +30,14 @@ void CamLidarPanel::captureSample()
   Optimise srv;
   srv.request.operation = Optimise::Request::CAPTURE;
   optimise_client_.call(srv);
+  if (srv.response.samples < 3)
+  {
+    optimise_button_->setEnabled(false);
+  }
+  else
+  {
+    optimise_button_->setEnabled(true);
+  }
 }
 
 void CamLidarPanel::discardSample()
@@ -36,6 +45,14 @@ void CamLidarPanel::discardSample()
   Optimise srv;
   srv.request.operation = Optimise::Request::DISCARD;
   optimise_client_.call(srv);
+  if (srv.response.samples < 3)
+  {
+    optimise_button_->setEnabled(false);
+  }
+  else
+  {
+    optimise_button_->setEnabled(true);
+  }
 }
 
 void CamLidarPanel::optimise()
