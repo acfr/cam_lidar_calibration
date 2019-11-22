@@ -79,6 +79,7 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
       if (!optimiser_->samples_.empty())
       {
         optimiser_->samples_.pop_back();
+        pc_samples_.pop_back();
       }
       break;
     case Optimise::Request::OPTIMISE:
@@ -89,9 +90,21 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
       }
       break;
   }
-
+  publishBoardPointCloud();
   flag = req.operation;  // read flag published by rviz calibration panel
   return true;
+}
+
+void FeatureExtractor::publishBoardPointCloud()
+{
+  // Publish collected board clouds
+  PointCloud pc;
+  for (auto board : pc_samples_)
+  {
+    pc += *board;
+    pc.header = board->header;
+  }
+  board_cloud_pub_.publish(pc);
 }
 
 void FeatureExtractor::boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level)
@@ -148,9 +161,9 @@ void FeatureExtractor::visualiseSamples()
 
     vis_array.markers.push_back(lidar_normal);
 
-    lidar_board.scale.x = 0.04;
-    lidar_board.scale.y = 0.04;
-    lidar_board.scale.z = 0.04;
+    lidar_board.scale.x = 0.01;
+    lidar_board.scale.y = 0.01;
+    lidar_board.scale.z = 0.01;
     lidar_board.color.a = 1.0;
     lidar_board.color.b = 0.0;
     lidar_board.color.g = 1.0;
@@ -364,7 +377,8 @@ FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud)
   proj.filter(*cloud_projected);
 
   // Publish the projected inliers
-  board_cloud_pub_.publish(cloud_projected);
+  pc_samples_.push_back(cloud_projected);
+  publishBoardPointCloud();
   return std::make_tuple(cloud_projected, lidar_normal);
 }
 

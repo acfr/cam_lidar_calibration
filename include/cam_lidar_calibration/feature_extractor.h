@@ -47,6 +47,7 @@ private:
                    pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
   std::tuple<std::vector<cv::Point3d>, cv::Mat> locateChessboard(const sensor_msgs::Image::ConstPtr& image);
   auto chessboardProjection(const std::vector<cv::Point2d>& corners, const cv_bridge::CvImagePtr& cv_ptr);
+  void publishBoardPointCloud();
 
   std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>
   extractBoard(const pcl::PointCloud<pcl::PointXYZIR>::Ptr& cloud);
@@ -68,6 +69,7 @@ private:
   std::shared_ptr<message_filters::Synchronizer<ImageLidarSyncPolicy>> image_pc_sync_;
   int queue_rate_ = 5;
 
+  std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> pc_samples_;
   ros::Publisher board_cloud_pub_, bounded_cloud_pub_;
   ros::Publisher samples_pub_;
   image_transport::Publisher image_publisher;
