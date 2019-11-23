@@ -7,6 +7,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   dynamic_reconfigure
+  eigen_conversions
   image_transport
   geometry_msgs
   message_generation

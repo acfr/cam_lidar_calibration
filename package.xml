@@ -9,6 +9,7 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <depend>cv_bridge</depend>
+  <depend>eigen_conversions</depend>
   <depend>image_transport</depend>
   <depend>libnlopt-dev</depend>
   <depend>libpcl-all-dev</depend>

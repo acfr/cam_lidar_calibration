@@ -84,7 +84,7 @@ public:
   Optimiser(const initial_parameters_t& params);
   ~Optimiser() = default;
 
-  bool optimise();
+  RotationTranslation optimise();
   std::vector<OptimisationSample> samples_;
 
   // Rotation only

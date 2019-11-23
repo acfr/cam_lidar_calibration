@@ -16,10 +16,12 @@
 #include <pcl/segmentation/impl/sac_segmentation.hpp>
 
 #include <opencv2/calib3d.hpp>
+#include <opencv2/core/eigen.hpp>
 
 #include <Eigen/Geometry>
 
 #include <cv_bridge/cv_bridge.h>
+#include <eigen_conversions/eigen_msg.h>
 #include <pcl_ros/point_cloud.h>
 #include <sensor_msgs/image_encodings.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -86,7 +88,14 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
       if (!optimiser_->samples_.empty())
       {
         ROS_INFO("Calling optimiser");
-        optimiser_->optimise();
+        auto t = optimiser_->optimise();
+        res.transform.translation.x = t.x / 1000.;
+        res.transform.translation.y = t.y / 1000.;
+        res.transform.translation.z = t.z / 1000.;
+        Eigen::Matrix3d mat;
+        cv::cv2eigen(t.rot.toMat(), mat);
+        Eigen::Quaterniond quat(mat);
+        tf::quaternionEigenToMsg(quat, res.transform.rotation);
       }
       break;
   }

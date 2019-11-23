@@ -275,7 +275,7 @@ void Optimiser::SO_report_generation(int generation_number,
   best_rotation_.yaw = best_genes.yaw;
 }
 
-bool Optimiser::optimise()
+RotationTranslation Optimiser::optimise()
 {
   auto n = samples_.size();
   ROS_INFO_STREAM("Optimising " << n << " collected samples");
@@ -473,7 +473,7 @@ bool Optimiser::optimise()
                   << rot_trans.x / 1000.0 << " " << rot_trans.y / 1000.0 << " " << rot_trans.z / 1000.0);
   ROS_INFO_STREAM("The problem was optimised in " << timer.toc() << " seconds");
 
-  return true;
+  return rot_trans;
 }
 
 // Function converts rotation matrix to corresponding euler angles

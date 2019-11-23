@@ -7,6 +7,7 @@
 #include <rviz/panel.h>
 #endif
 
+#include <QLabel>
 #include <QPushButton>
 
 namespace cam_lidar_calibration
@@ -43,6 +44,7 @@ protected:
   ros::NodeHandle nh_;
   ros::ServiceClient optimise_client_;
 
+  QLabel* output_label_;
   QPushButton* capture_button_;
   QPushButton* discard_button_;
   QPushButton* optimise_button_;
