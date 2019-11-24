@@ -104,8 +104,10 @@ TEST(OptimiserTest, fullRunTest)
 {
   Optimiser o(createParams());
   o.samples_ = createSamples(99);
-  o.optimise();
-  EXPECT_TRUE(true);
+  auto result = o.optimise();
+  EXPECT_NEAR(result.x / 1000., 0.120, 0.005);
+  EXPECT_NEAR(result.y / 1000., 0.006, 0.005);
+  EXPECT_NEAR(result.z / 1000., -0.132, 0.005);
 }
 
 int main(int argc, char** argv)
