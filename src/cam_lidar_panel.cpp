@@ -2,15 +2,17 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QGroupBox>
+#include <QTimer>
 
 #include "cam_lidar_panel.h"
 #include <cam_lidar_calibration/Optimise.h>
 
 namespace cam_lidar_calibration
 {
-CamLidarPanel::CamLidarPanel(QWidget* parent) : rviz::Panel(parent)
+CamLidarPanel::CamLidarPanel(QWidget* parent) : rviz::Panel(parent), action_client_("run_optimise", true)
 {
   optimise_client_ = nh_.serviceClient<cam_lidar_calibration::Optimise>("optimiser");
+  action_client_.waitForServer();
 
   QVBoxLayout* main_layout = new QVBoxLayout;
   QHBoxLayout* button_layout = new QHBoxLayout;
@@ -21,6 +23,9 @@ CamLidarPanel::CamLidarPanel(QWidget* parent) : rviz::Panel(parent)
   optimise_button_ = new QPushButton("Optimise");
   optimise_button_->setEnabled(false);
   connect(optimise_button_, SIGNAL(clicked()), this, SLOT(optimise()));
+  QTimer* timer = new QTimer;
+  connect(timer, SIGNAL(timeout()), this, SLOT(updateResult()));
+  timer->start(500);
 
   output_label_ = new QLabel("");
 
@@ -67,16 +72,36 @@ void CamLidarPanel::discardSample()
 
 void CamLidarPanel::optimise()
 {
-  Optimise srv;
-  srv.request.operation = Optimise::Request::OPTIMISE;
-  optimise_client_.call(srv);
-  auto t = srv.response.transform.translation;
-  auto r = srv.response.transform.rotation;
-  std::ostringstream os;
-  os.precision(3);
-  os << "Rotation - w: " << r.w << " x: " << r.x << " y: " << r.y << " z: " << r.z;
-  os << "\nTranslation - x: " << t.x << " y: " << t.y << " z: " << t.z;
-  output_label_->setText(QString::fromStdString(os.str()));
+  RunOptimiseGoal goal;
+  action_client_.sendGoal(goal);
+}
+
+void CamLidarPanel::updateResult()
+{
+  if (action_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+  {
+    capture_button_->setEnabled(true);
+    discard_button_->setEnabled(true);
+    optimise_button_->setEnabled(true);
+    auto result = action_client_.getResult();
+    auto t = result->transform.translation;
+    auto r = result->transform.rotation;
+    std::ostringstream os;
+    os.precision(3);
+    os << "Rotation - w: " << r.w << " x: " << r.x << " y: " << r.y << " z: " << r.z;
+    os << "\nTranslation - x: " << t.x << " y: " << t.y << " z: " << t.z;
+    output_label_->setText(QString::fromStdString(os.str()));
+  }
+  if (action_client_.getState() == actionlib::SimpleClientGoalState::ACTIVE)
+  {
+    capture_button_->setEnabled(false);
+    discard_button_->setEnabled(false);
+    optimise_button_->setEnabled(false);
+    std::string str = "Optimising...";
+    // Make the ellipsis "bounce"
+    int count = (output_label_->text().length() + 2) % 3;
+    output_label_->setText(QString::fromStdString(str.substr(0, 11 + count)));
+  }
 }
 
 // Save all configuration data from this panel to the given

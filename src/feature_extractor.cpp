@@ -84,20 +84,6 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
         pc_samples_.pop_back();
       }
       break;
-    case Optimise::Request::OPTIMISE:
-      if (!optimiser_->samples_.empty())
-      {
-        ROS_INFO("Calling optimiser");
-        auto t = optimiser_->optimise();
-        res.transform.translation.x = t.x / 1000.;
-        res.transform.translation.y = t.y / 1000.;
-        res.transform.translation.z = t.z / 1000.;
-        Eigen::Matrix3d mat;
-        cv::cv2eigen(t.rot.toMat(), mat);
-        Eigen::Quaterniond quat(mat);
-        tf::quaternionEigenToMsg(quat, res.transform.rotation);
-      }
-      break;
   }
   publishBoardPointCloud();
   flag = req.operation;  // read flag published by rviz calibration panel
@@ -107,6 +93,21 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
   }
   res.samples = optimiser_->samples_.size();
   return true;
+}
+
+void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
+                                actionlib::SimpleActionServer<RunOptimiseAction>* as)
+{
+  auto t = optimiser_->optimise();
+  RunOptimiseResult res;
+  res.transform.translation.x = t.x / 1000.;
+  res.transform.translation.y = t.y / 1000.;
+  res.transform.translation.z = t.z / 1000.;
+  Eigen::Matrix3d mat;
+  cv::cv2eigen(t.rot.toMat(), mat);
+  Eigen::Quaterniond quat(mat);
+  tf::quaternionEigenToMsg(quat, res.transform.rotation);
+  as->setSucceeded(res);
 }
 
 void FeatureExtractor::publishBoardPointCloud()

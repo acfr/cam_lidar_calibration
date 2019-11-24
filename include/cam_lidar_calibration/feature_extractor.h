@@ -14,6 +14,8 @@
 #include <pcl/point_cloud.h>
 #include <pcl/ModelCoefficients.h>
 
+#include <actionlib/server/simple_action_server.h>
+#include <cam_lidar_calibration/RunOptimiseAction.h>
 #include <cam_lidar_calibration/Optimise.h>
 
 #include <cam_lidar_calibration/boundsConfig.h>
@@ -39,6 +41,9 @@ public:
                                const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& pc);
   bool serviceCB(Optimise::Request& req, Optimise::Response& res);
   void boundsCB(boundsConfig& config, uint32_t level);
+
+  void optimise(const RunOptimiseGoalConstPtr& goal,
+                actionlib::SimpleActionServer<cam_lidar_calibration::RunOptimiseAction>* as);
 
   void visualiseSamples();
 

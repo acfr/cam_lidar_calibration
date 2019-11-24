@@ -10,6 +10,11 @@
 #include <QLabel>
 #include <QPushButton>
 
+#include <actionlib/client/simple_action_client.h>
+#include <cam_lidar_calibration/RunOptimiseAction.h>
+
+using ActionClient = actionlib::SimpleActionClient<cam_lidar_calibration::RunOptimiseAction>;
+
 namespace cam_lidar_calibration
 {
 class CamLidarPanel : public rviz::Panel
@@ -38,11 +43,13 @@ protected Q_SLOTS:
   void captureSample();
   void discardSample();
   void optimise();
+  void updateResult();
 
 protected:
   // The ROS node handle.
   ros::NodeHandle nh_;
   ros::ServiceClient optimise_client_;
+  ActionClient action_client_;
 
   QLabel* output_label_;
   QPushButton* capture_button_;

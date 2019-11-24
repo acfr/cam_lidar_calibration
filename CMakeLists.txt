@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
 find_package(catkin REQUIRED COMPONENTS
+  actionlib
+  actionlib_msgs
   cv_bridge
   dynamic_reconfigure
   eigen_conversions
@@ -42,12 +44,18 @@ set(CMAKE_AUTOMOC ON)
 #  FILES
 #  extrinsics.msg
 #  )
+add_action_files(
+  FILES
+  RunOptimise.action
+  )
 add_service_files(
   FILES
   Optimise.srv
   )
 generate_messages(
   DEPENDENCIES
+  actionlib_msgs
+  geometry_msgs
   std_msgs
   sensor_msgs
   )
