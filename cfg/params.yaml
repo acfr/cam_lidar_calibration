@@ -1,0 +1,24 @@
+feature_extraction:
+  x_min: 0.24
+  x_max: 5.0
+  y_min: -2.55
+  y_max: 1.0
+  z_min: -0.7
+  z_max: 2.0
+fisheye_model: true
+chessboard:
+  pattern_size:
+    height: 8
+    width: 6
+  square_length: 65
+  board_dimension:
+    width: 600
+    height: 905
+  translation_error:
+    x: 30
+    y: 10
+cameramat: [1178.654264230649, 0.0, 960.769818463969, 0.0, 1182.0760126922614, 603.9601849872713, 0.0, 0.0, 1.0]
+distcoeff: [-0.09405418270319424, 0.08610743090764036, -0.17081566190501285, 0.09818990340541457]
+image_size:
+  l: 1920
+  b: 1208

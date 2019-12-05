@@ -1,4 +1,4 @@
-<package>
+<package format="2">
   <name>cam_lidar_calibration</name>
   <version>0.0.1</version>
   <description>camera lidar extrinsic calibration</description>
@@ -8,34 +8,27 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
-  <build_depend>nodelet</build_depend>
-  <build_depend>roscpp</build_depend>
-  <build_depend>std_msgs</build_depend>
-  <build_depend>nav_msgs</build_depend>
-  <build_depend>sensor_msgs</build_depend>
-  <build_depend>libpcl-all-dev</build_depend>
-  <build_depend>cv_bridge</build_depend>
-  <build_depend>image_transport</build_depend>
-  <build_depend>message_generation</build_depend>
-  <build_depend>OpenCV</build_depend>
-  <build_depend>libnlopt-dev</build_depend>
-  <build_depend>cmake_modules</build_depend>
+  <depend>actionlib</depend>
+  <depend>actionlib_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>eigen_conversions</depend>
+  <depend>image_transport</depend>
+  <depend>libnlopt-dev</depend>
+  <depend>libpcl-all-dev</depend>
+  <depend>message_generation</depend>
+  <depend>message_runtime</depend>
+  <depend>nav_msgs</depend>
+  <depend>nodelet</depend>
+  <depend>OpenCV</depend>
+  <depend>roscpp</depend>
+  <depend>rviz</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
 
-  <run_depend>cv_bridge</run_depend>
-  <run_depend>image_transport</run_depend>
-  <run_depend>OpenCV</run_depend>
-  <run_depend>message_runtime</run_depend>
-  <run_depend>libpcl-all</run_depend>
-  <run_depend>nodelet</run_depend>
-  <run_depend>roscpp</run_depend>
-  <run_depend>std_msgs</run_depend>
-  <run_depend>nav_msgs</run_depend>
-  <run_depend>sensor_msgs</run_depend>
-  <run_depend>nlopt</run_depend>
-  <run_depend>cmake_modules</run_depend>
   <export>
     <nodelet plugin="${prefix}/nodelet_definition.xml"/>
-  </export>
+    <rviz plugin="${prefix}/plugin_description.xml"/>
+</export>
 </package>
 
 

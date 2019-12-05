@@ -1,91 +1,126 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(cam_lidar_calibration)
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
-find_package(catkin REQUIRED COMPONENTS nodelet 
-	roscpp 
-	std_msgs 
-        pcl_conversions 
-        pcl_ros
-	image_transport
-        cv_bridge
-	sensor_msgs
-        message_generation
-        cmake_modules
-        dynamic_reconfigure)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+
+find_package(catkin REQUIRED COMPONENTS
+  actionlib
+  actionlib_msgs
+  cv_bridge
+  dynamic_reconfigure
+  eigen_conversions
+  image_transport
+  geometry_msgs
+  message_generation
+  nodelet
+  pcl_conversions
+  pcl_ros
+  roscpp
+  rviz
+  sensor_msgs
+  std_msgs
+  )
 
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
-find_package(Eigen REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(Qt5 REQUIRED Core Widgets)
+
 ## Setup include directories
 include_directories(
-        ${catkin_INCLUDE_DIRS}
-        include/${PROJECT_NAME}
-        ${OpenCV_INCLUDE_DIRS}
-        ${Eigen_INCLUDE_DIRS}
-        src
-)
-add_message_files(
+  include
+  ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ${Eigen_INCLUDE_DIRS}
+  )
+#link_directories(${catkin_LIBRARY_DIRS})
+
+add_definitions(-DQT_NO_KEYWORDS)
+
+set(CMAKE_AUTOMOC ON)
+
+#add_message_files(
+#  FILES
+#  extrinsics.msg
+#  )
+add_action_files(
   FILES
-  calibration_data.msg
-  extrinsics.msg
-)
+  RunOptimise.action
+  )
+add_service_files(
+  FILES
+  Optimise.srv
+  )
 generate_messages(
   DEPENDENCIES
+  actionlib_msgs
+  geometry_msgs
   std_msgs
   sensor_msgs
-)
+  )
 generate_dynamic_reconfigure_options(
   cfg/bounds.cfg
-)
+  )
 catkin_package(
-  CATKIN_DEPENDS nodelet 
-	roscpp 
-	std_msgs 
-	sensor_msgs
-	message_runtime
-)
+  CATKIN_DEPENDS nodelet
+  roscpp
+  std_msgs
+  sensor_msgs
+  message_runtime
+  )
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+add_library(cam_lidar_calibration
+  src/cam_lidar_panel.cpp
+  src/feature_extractor.cpp
+  src/load_params.cpp
+  src/optimiser.cpp
+  )
+target_link_libraries(cam_lidar_calibration
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBS}
+  ${Eigen_LIBRARIES}
+  Qt5::Widgets
+  )
 
-add_executable(input_sample src/input_sample.cpp)
-target_link_libraries(input_sample ${catkin_LIBRARIES})
+add_executable(feature_extraction_node
+  src/feature_extraction_node.cpp
+  )
+target_link_libraries(feature_extraction_node cam_lidar_calibration ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
 
-add_executable(optimizer src/optimizer.cpp)
-target_link_libraries(optimizer ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
-add_dependencies(optimizer cam_lidar_calibration_generate_messages_cpp)
-
-## Create the nodelet tutorial library
-add_executable(feature_extraction src/main.cpp)
-add_dependencies(feature_extraction ${PROJECT_NAME}_gencfg)
-
-target_link_libraries(feature_extraction ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
-if(catkin_EXPORTED_LIBRARIES)
-  add_dependencies(feature_extraction ${catkin_EXPORTED_LIBRARIES})
-endif()
 
 ## Mark the nodelet library for installations
-install(TARGETS feature_extraction optimizer input_sample
+install(TARGETS
+  feature_extraction_node
+  cam_lidar_calibration
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
-install(FILES nodelet_definition.xml 
+install(FILES nodelet_definition.xml plugin_description.xml
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
   FILES_MATCHING PATTERN "*.h"
-)
+  )
 
 install(DIRECTORY launch/
-    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
-)
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  )
 
 install(DIRECTORY cfg/
-		DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cfg
-)
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cfg
+  )
 
 install(DIRECTORY rviz/
-		DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
-		)
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
+  )
+
+## Add gtest based cpp test target and link libraries
+catkin_add_gtest(${PROJECT_NAME}-test
+  test/test_optimiser.cpp)
+if(TARGET ${PROJECT_NAME}-test)
+  target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
+endif()
