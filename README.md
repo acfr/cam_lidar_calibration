@@ -1,107 +1,211 @@
-# ROS package to determine the extrinsic calibration parameters (3D rotation and translation) between a camera and a lidar.
+# Camera-LiDAR Calibration
 
-![alt text](img/sensors.png "Sensor setup")
+This package estimates the calibration parameters that transforms the camera frame (parent) into the lidar frame (child). We aim to simplify the calibration process by optimising the pose selection process to take away the tedious trial-and-error of having to re-calibrate with different poses until a good calibration is found. We seek to obtain calibration parameters as an estimate with uncertainty that fits the entire scene instead of solely fitting the target, which many existing works struggle with. Our proposed approach overcomes the limitations of existing target-based calibration methods, namely from user error and overfitting of the target. For more details, please take a look at our [paper](https://somearxivlink). 
 
-## Experimental Setup
+<p align="center">
+<img width="70%" src="img/sensorsetup_visuals.png">
+<br>
+<em><b>Left:</b> Our sensor setup at the Australian Centre for Field Robotics (ACFR). <b>Right:</b> Calibration results of this package with an Nvidia gmsl camera to both Baraja Spectrum-Scan™ (top) and Velodyne VLP-16 (bottom). The projection of Baraja Spectrum-Scan™ has some ground points (yellow) on the chessboard due to the difference in perspective of camera and lidar.</em>
+</p>
 
-1. To make a calibration target, firmly attach a checkerboard on a rigid, opaque, and rectangular board such that both their centres align and their edges remain parallel to one another.
-2. Mount the target on a stand such that it is tilted at an angle of 45-60 degrees with respect to the ground plane. 
-3. Choose a stand to hang the target in a way that it does not hold the board with significant protruding elements close to the board boundaries or corners.
+# 1. Getting started
+## 1.1 Installation 
 
-![alt text](img/Experimental_area.png "Experimental Setup")
+This package has only been tested in ROS Melodic. 
 
-## Data Collection
+### Local ROS 
+1. Clone the repository in your `catkin_ws/src/` folder
+```
+git clone -c http.sslverify=false https://gitlab.acfr.usyd.edu.au/its/cam_lidar_calibration.git
+```
+2. Download ros and python dependencies 
+```
+sudo apt update && apt-get install -y ros-melodic-pcl-conversions ros-melodic-pcl-ros ros-melodic-tf2-sensor-msgs
+pip install pandas scipy
+```
+3. Build the package and source the `setup.bash` or `setup.zsh` file. 
+```
+catkin build cam_lidar_calibration
+source ~/catkin_ws/devel/setup.bash 
+```
 
-1. For calibration, it is required to place the target in different locations and orientations relative to the camera-lidar sensor pair.
-2. Make sure that the 3D experimental region (depicted by an orange box in the figure above) 
-in which the target will be placed is free from any other objects apart from the board and its stand. 
-3. Ensure that the entire board is visible to both sensors. 
-3. A minimum of 3 checkerboard poses or samples are to be collected. Satisfactory calibration results are obtained with around 8-9 samples. 
-In general, calibration accuracy improves as more samples are collected as shown below.
+### Docker
+1. Clone the repository in your `catkin_ws/src/` folder 
+```
+git clone -c http.sslverify=false https://gitlab.acfr.usyd.edu.au/its/cam_lidar_calibration.git
+```
+2. Run the docker image (which will be pulled dockerhub). If your computer has a Nvidia GPU, set the cuda flag `--cuda on`. If you do not have one, set `--cuda off`. 
 
-![alt text](img/Checker.png "checkerboard poses")
+```
+cd cam_lidar_calibration/docker
+./run.sh --cuda on
+```
+Once you run this script, the docker container will run and immediately build the catkin workspace and source the `setup.bash` file. When this is done, you can move on to the **Quick start** section.
 
-## Pre-requisites 
+If you'd like to build the image from scratch, a `build.sh` script is also provided. 
 
-1. Ensure that the camera and the lidar have ros drivers such that the device output is a ROS message. 
-2. Enter the following in the described order in `cfg/initial_params.txt`
-- Name of the image topic 
-- Name of the point cloud topic 
-- Type of camera lens (1 for fisheye; 0 for pinhole)
-- Number of lidar beams (Eg. 16, 32, 64 etc)
-- Size of the checkerboard (Eg. 8X6 written as 8 6)
-- Side length of each square in the checkerboard in millimetres (mm) (Eg. 65)
-- Length and breadth of the target in mm (Eg. 905 600 ; length = 905 mm, breadth = 600 mm)
-- Error in checkerboard placement along the length and breadth of the rectangular board. 
-Ideally, the checkerboard centre should align with the board centre. However, if that's not the case, you can account for the translational errors along the length 
-and breadth of the board atop which the checkerboard is fixed. 
-For error along the length, if the checkerboard centre is above the board centre, the error (in mm) is positive else it is negative.
-For error along the breadth, if the checkerboard centre is shifted to the right of the board centre, the error (in mm) is positive else it is negative. 
-(Eg. 20 0; +20 mm error along the length of the board and 0 mm error along the breadth of the board. i.e in our case the checkerboard is shifted up from its 
-original position by 20 mm)
+Note: If using docker, the `./run.sh` mounts your local `cam_lidar_calibration` folder to `/catkin_ws/src/cam_lidar_calibration` inside the container. When running the calibration, this would create csv files inside the container under root ownership which is not ideal. However the workaround is to use the following command outside the docker image, which would change ownership of **all** files in your current folder to be the same as your $USER and $GROUP in the local environment. 
+```
+sudo chown $USER:$GROUP *
+```
 
-![alt text](img/positive_length.png "Experimental Setup")
-![alt text](img/xpositive.png "Experimental Setup")
+## 1.2 Quick start
+You can verify that this repository runs sucessfully by running this package on our provided quick-start data. If you are using docker, these instructions should be run inside the container. 
 
-- 3X3 Camera intrinsic matrix (Units in mm)
-- Number of camera distortion coefficients (Our distortion function uses 4 coefficients for fisheye lens and 5 coefficients for pinhole lens)
-- Camera distortion coefficients
-- Image Size in pixels (Eg. 1920 1208)
+**1. Run the calibration process**
 
-## Procedure 
+This first step takes the saved poses, computes the best sets with the lowest VOQ score. 
+```
+roslaunch cam_lidar_calibration run_optimiser.launch import_samples:=true
+```
+After calibration, the output is saved in the same directory as the imported samples. For this quickstart example, the output is saved in `cam_lidar_calibration/data/vlp/`.
 
-1. Launch the calibration package
-`roslaunch cam_lidar_calibration cam_lidar_calibration.launch`
+**2. Obtain and assess calibration results**
 
-2. Rviz and reconfigure_gui will open up.
+This step gives the estimated calibration parameters by taking a filtered mean of the best sets, and displaying the gaussian fitted histogram of estimated parameters. Additionally, we provide an assessment of the calibration results by computing the reprojection error over all provided data samples and a visualisation (if specified). 
 
-3. Rviz is used to visualize the features in the point cloud and in the image. The end result - point cloud projection on the image - is also shown. 
+To obtain and assess the calibration output, provide the absolute path of the csv output file generated in the first step. The example below uses pre-computed calibration results. You can replace this with your newly generated results in step 1 if you wish. You should see a terminal output with the reprojection errors, along with a gaussian-fitted histogram and a visualisation. 
+```
+roslaunch cam_lidar_calibration assess_results.launch csv:="$(rospack find cam_lidar_calibration)/data/vlp/calibration_quickstart.csv" visualise:=true
+``` 
 
-The subscribed images are 
-- Raw camera image (change the image topic)
-- camera image with checkerboard features
-- point cloud projection on the image
+That's it! If this quick start worked successfully, you can begin using this tool for your own data. If not, please create an issue and we'll aim to resolve it promptly. 
 
-The subscribed point clouds are 
-- Experimental region point cloud
-- Target plane and features
+# 2. Calibration with your own data
 
-4. In the GUI, choose the node `feature_extraction` from `camera_features`. 
-You will see slider bars corresponding to the bounds of the 3D experimental region along the lidar's x, y, and z axis. 
-The slider bars can be varied and the corresponding experimental region can be visualized in Rviz. 
+To use this package with your own data, ensure that your bag file has the following topics:
+- **Lidar**: 3D pointcloud ([sensor_msgs::PointCloud2](http://docs.ros.org/en/api/sensor_msgs/html/msg/PointCloud2.html))
+- **Monocular camera:** an image ([sensor_msgs::Image](http://docs.ros.org/en/api/sensor_msgs/html/msg/Image.html)) and the corresponding meta-information topic ([sensor_msgs::CameraInfo](http://docs.ros.org/en/api/sensor_msgs/html/msg/CameraInfo.html)). 
 
-![alt text](img/reconfigure_gui.png "reconfigure_gui")
+All data and output files will be saved in the `cam_lidar_calibration/data/YYYY-MM-DD_HH-MM-SS/` folder. 
 
-5. Start the data collection process by placing the checkerboard facing the sensor pair. 
-If you are doing offline calibration, i.e. if you have a rosbag with recorded samples, then run the bag. 
-`rosbag play samples.bag`, where `samples.bag` is the path to your rosbag.
+## 2.1 Setup of Calibration Target
 
-6. Press keyboard keys to perform the following tasks. 
-- ‘i’ to collect a sample. 
-As soon as 'i' is pressed, features can be seen in the point cloud and in the image (in Rviz). 
-- ‘enter’ to include the collected sample for optimization. 
-At times, the collected sample doesn't yield good features (shown below as seen in Rviz). 
-This could be due to improper experimental region bounds or lesser number of scan lines passing each edge of the target. 
-If that's the case, 'enter' need not be pressed. That way, the sample will not be considered as an input to the optimizer.  
+1. Prepare a rectangular chessboard printout. The chessboard print used in the paper is an A1 (594 x 841mm) with 95mm squares and 7x5 inner vertices (not the same as the number of grid squares), downloaded from https://markhedleyjones.com/projects/calibration-checkerboard-collection 
+2. Firmly attach the chessboard on a rigid, opaque, and rectangular board such that both their centres align (as best as possible) and their edges remain parallel to one another. 
+3. Choose a suitable stand that can mount the target with little to no protruding elements from the board's edges.
+4. Rotate the chessboard such that it is in the shape of a diamond (at an angle of 45° with respect to the ground) and mount it on a stand. 
 
-![alt text](img/bad_sample.png "bad sample")
+In the image below, we show two chessboards rigs that we've used with this package. 
 
-- ‘o’ to begin the optimization process after sample inclusion.
+<p  align="center">
+    <img width="30%" src="img/chessboards.png">
+    <br>
+    <em><b>Left:</b> chessboard with 8x6 inner vertices and 65mm squares. <b>Right:</b> chessboard with 7x5 inner vertices and 95mm squares.</em>
+</p>
 
-7. After optimization is completed, the extrinsic parameters are displayed in the terminal and can be interpreted (in order) as follows: 
-roll, pitch, yaw, x, y, and z of the camera frame with respect to the lidar frame. 
-The angles are in radians and the translation units are in centimetres. 
+## 2.2 Configuration files
 
-8. The point cloud projection on the image can be seen in Rviz.
+The following explains the fields in /cfg/params.yaml
 
-![alt text](img/visualization.png "rviz window")
+**1. Specify the names of your lidar and camera topics.** For example, in our case it is:
+```
+camera_topic: "/gmsl/A0/image_color"
+camera_info: "/gmsl/A0/camera_info"
+lidar_topic: "/velodyne/front/points"
+```
+**2. (optional) Specify the default bounds of the pointcloud filtering**. If you are unsure, feel free to skip this step. 
 
-For more information, view the [calibration paper](https://arxiv.org/abs/1904.12433).
+**3. Input the details about the chessboard target you prepared:**
 
-A video of the calibration process can be viewed [here](https://www.youtube.com/watch?v=GD2c3jLBDZU). 
+- pattern_size: these are the inner vertices of the chessboard (not the number of squares; see our chessboards in Section 2.1)
+- square_length (mm): the length of a chessboard square. 
+- board_dimension (mm): width and height of the backing board that the chessboard print is mounted on.
+- translation_error: the offset of the chessboard centre from the centre of the backing board (see illustration below).
 
+<p  align="center">
+    <img width="40%" src="img/chessboardconfigexample.png">
+    <br>
+    <em><b>Example:</b> In this example, the offset is x=10mm, y=30mm, board dimensions are 910x650mm with square lengths of 65mm and pattern size of 8x6 (HxW).</em>
+</p>
 
+## 2.3 Capture poses and get the best sets of calibration parameters
 
+### 1. Launch calibration package
+Run the calibration package with the `import_samples` flag set to false. An rviz window and rqt dynamic reconfigure window should open. If you're using a docker container and RViz does not open, try setting the cuda flag to the opposite of what you used. 
+
+```
+roslaunch cam_lidar_calibration run_optimiser.launch import_samples:=false
+```
+This process can be done online or offline. If you are offline, make sure to play the rosbag using `--pause` flag so that rviz can get the `/tf` topics e.g. `rosbag play --pause mybag.bag`. If you are running a docker container, you can run the bag file on a separate terminal window outside the docker container. 
+
+### 2. Isolate the chessboard
+
+Using the rqt_reconfigure window, modify the values of the x,y and z axes limits to such that it only shows the chessboard. If chessboard is not fully isolated, it may affect the plane-fitting of the chessboard and also lead to high board dimension errors. 
+
+<p  align="center">
+    <img width="70%" src="img/isolatechessboard.png">
+    <br>
+    <em><b>Left:</b> Unfiltered pointcloud. <b>Right:</b> isolated chessboard pointcloud after setting the values in the rqt_reconfigure. For each chessboard pose, depending on your lidar, you might have to continually tweak the rqt_reconfigure values.</em>
+</p>
+
+### 3. Capture poses
+
+Place the chessboard facing the sensor pair and click the `capture` button. Make sure that the chessboard is correctly outlined with a low board dimension error. If it isn't, then `discard` and click `capture` again (or move the board and capture again). 
+
+**Board errors (in the terminal window)**: Try to get a board dimension error as close to zero as possible (errors less than 30mm are acceptable). If the board error is too high, then try again in a different position or see below for potential fixes. 
+
+- High board errors can be caused by the chessboard being too close or too far from the lidar. So we recommend moving it a bit closer/further. 
+
+- Low resolution lidars may struggle to capture boards with low error if there are not enough points on the board. For example, for the VLP-16, we require at least 7 rings on the board for a decent capture. 
+
+- If the chessboard is consistently under or overestimated with the same amount of board error, then it could be that the lidar's internal distance estimation is not properly calibrated. We've provided a param in the `run_optimiser.launch` file that allows you to apply an offset to this distance estimation. For our VLP-16 we had to set `distance_offset_mm=-30`. This should be permanently set in the lidar driver once you've finished calibrating. 
+
+<p  align="center">
+    <img width="50%" src="img/distanceoffset.png">
+    <br>
+    <em> In the left image above, we show the same pose at 3 different <b>distance offsets</b>. We add a distance offset by converting the cartesian (xyz) coordinates to polar (r, theta) and add a distance offset to the radius r. When we do this, you can think of it like extending/reducing the radius of a circle. Every shape in that new coordinate system is hence enlarged/shrunk. Increasing the distance offset value increases the chessboard area (+100mm is the largest). The right image is the same as the left, just with a different perspective to show that the increase is in both height and width of the chessboard.</em>
+</p>
+
+**Number and variation of poses**: We recommend that you capture at least 20 poses (more is better) with at least a 2m distance range (from lidar centre) between closest and farthest poses. Below lists some guidelines.
+
+- Spread the poses out in the calibration range, covering the width and depth of the field of view. For our specific VLP-16 and Baraja Spectrum Scan lidars, we had a range of 1.7m - 4.3m and 2.1m - 5m respectively. 
+
+- Have variation in the yaw and pitch of the board as best as you can. This is explained in the following image. 
+
+<p  align="center">
+    <img width="70%" src="img/goodvsbadpose.png">
+    <br>
+    <em>For the <b>bad poses (left)</b>, the normals of the board align such that their tips draw out a line and they are all in the same position, thereby giving a greater chance of overfitting the chessboard at that position. For the <b>good poses (right)</b>, we see variation in the board orientation and positioning. </em>
+</p>
+
+### 4. Get the best sets of calibration parameters
+
+When all poses have been captured, click the `optimise` button. Note that if you do not click this button, the poses will not be properly saved. 
+
+The poses are saved (png, pcd, poses.csv) in the `($cam_lidar_calibration)/data/YYYY-MM-DD_HH-MM-SS/` folder for the reprojection assessment phase (and also if you wish to re-calibrate with the same data). The optimisation process will generate an output file `calibration_YYYY-MM-DD_HH-MM-SS.csv` in the same folder which stores the results of the best sets.
+
+## 2.4 Estimating parameters and assessing reprojection error
+
+After you obtain the calibration csv output file, copy-paste the absolute path of the calibration output file after `csv:=` in the command below with double quotation marks. A histogram with a gaussian fitting should appear. You can choose to visualise a sample if you set the visualise flag. If you wish to visualise a different sample, you can change the particular sample in the `assess_results.launch` file. The reprojection results are shown in the terminal window.
+```
+roslaunch cam_lidar_calibration assess_results.launch csv:="$(rospack find cam_lidar_calibration)/data/vlp/calibration_quickstart.csv" visualise:=true
+```
+
+<p  align="center">
+    <img width="70%" src="img/pipelineoutput.png">
+    <br>
+    <em>Output of our calibration pipeline shows a histogram with a gaussian fit and a visualisation of the calibration results with reprojection error. </em>
+</p>
+
+## More Information
+
+The baseline calibration algorithm was from Verma, 2019. You can find their [paper](https://arxiv.org/abs/1904.12433), and their publicly available [code](https://gitlab.acfr.usyd.edu.au/sverma/cam_lidar_calibration).
+
+Please cite our work if this package helps with your research. 
+```
+@article{tsai2021,
+   author = {},
+    title = "{}",
+  journal = {},
+archivePrefix = "arXiv",
+   eprint = {},
+ primaryClass = "cs.RO",
+ keywords = {Computer Science - Robotics, Computer Science - Computer Vision and Pattern Recognition},
+     year = 2021,
+    month = 
+}
+```
 
 
 

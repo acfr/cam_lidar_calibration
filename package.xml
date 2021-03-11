@@ -1,9 +1,9 @@
 <package format="2">
   <name>cam_lidar_calibration</name>
   <version>0.0.1</version>
-  <description>camera lidar extrinsic calibration</description>
-  <maintainer email="s.verma@acfr.usyd.edu.au">Surabhi Verma</maintainer>
-  <author>Surabhi Verma</author>
+  <description>camera lidar calibration</description>
+  <maintainer email="jtsa5115@uni.sydney.edu.au">Darren Tsai</maintainer>
+  <author>ACFR-ITS</author>
   <license>BSD</license>
 
   <buildtool_depend>catkin</buildtool_depend>
@@ -21,6 +21,7 @@
   <depend>nodelet</depend>
   <depend>OpenCV</depend>
   <depend>roscpp</depend>
+  <depend>rospy</depend>
   <depend>rviz</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
