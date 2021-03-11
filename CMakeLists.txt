@@ -17,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_ros
   roscpp
+  rospy
   rviz
   sensor_msgs
   std_msgs
@@ -34,16 +35,13 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${Eigen_INCLUDE_DIRS}
   )
-#link_directories(${catkin_LIBRARY_DIRS})
+
+link_directories(${catkin_LIBRARY_DIRS})
 
 add_definitions(-DQT_NO_KEYWORDS)
 
 set(CMAKE_AUTOMOC ON)
 
-#add_message_files(
-#  FILES
-#  extrinsics.msg
-#  )
 add_action_files(
   FILES
   RunOptimise.action
@@ -63,11 +61,14 @@ generate_dynamic_reconfigure_options(
   cfg/bounds.cfg
   )
 catkin_package(
+  INCLUDE_DIRS include
   CATKIN_DEPENDS nodelet
   roscpp
+  rospy
   std_msgs
   sensor_msgs
   message_runtime
+#    libutransform
   )
 
 add_library(cam_lidar_calibration
@@ -75,7 +76,7 @@ add_library(cam_lidar_calibration
   src/feature_extractor.cpp
   src/load_params.cpp
   src/optimiser.cpp
-  )
+        )
 target_link_libraries(cam_lidar_calibration
   ${catkin_LIBRARIES}
   ${OpenCV_LIBS}
@@ -83,11 +84,24 @@ target_link_libraries(cam_lidar_calibration
   Qt5::Widgets
   )
 
-add_executable(feature_extraction_node
-  src/feature_extraction_node.cpp
-  )
-target_link_libraries(feature_extraction_node cam_lidar_calibration ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Eigen_LIBRARIES})
+add_executable(feature_extraction_node src/feature_extraction_node.cpp)
+target_link_libraries(feature_extraction_node
+        cam_lidar_calibration
+        ${catkin_LIBRARIES}
+        ${OpenCV_LIBS}
+        ${Eigen_LIBRARIES}
+        )
 
+add_executable(assess_node src/assess_calibration.cpp)
+target_link_libraries(assess_node
+        cam_lidar_calibration
+        ${catkin_LIBRARIES}
+        ${OpenCV_LIBS}
+        )
+
+#############
+## Install ##
+#############
 
 ## Mark the nodelet library for installations
 install(TARGETS
@@ -118,9 +132,7 @@ install(DIRECTORY rviz/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
   )
 
-## Add gtest based cpp test target and link libraries
-catkin_add_gtest(${PROJECT_NAME}-test
-  test/test_optimiser.cpp)
-if(TARGET ${PROJECT_NAME}-test)
-  target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
-endif()
+catkin_install_python(PROGRAMS 
+  scripts/visualise_results.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
