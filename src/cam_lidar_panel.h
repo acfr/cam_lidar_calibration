@@ -34,8 +34,8 @@ namespace cam_lidar_calibration
 
         // Now we declare overrides of rviz::Panel functions for saving and
         // loading data from the config file.
-        virtual void load(const rviz::Config& config);
-        virtual void save(rviz::Config config) const;
+        void load(const rviz::Config& config) override;
+        void save(rviz::Config config) const override;
 
     public Q_SLOTS:
 

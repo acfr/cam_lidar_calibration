@@ -361,11 +361,11 @@ namespace cam_lidar_calibration
         float cn_cond_fro = cv::norm(camera_normals_, cv::NORM_L2) * cv::norm(camera_normals_.inv(), cv::NORM_L2);
         float ln_cond_fro = cv::norm(lidar_normals_, cv::NORM_L2) * cv::norm(lidar_normals_.inv(), cv::NORM_L2);
 
-        float cond_avg = abs(cn_cond_fro+ln_cond_fro)/2;
+        float cond_max = (cn_cond_fro > ln_cond_fro) ? cn_cond_fro : ln_cond_fro;
         float b_avg = std::accumulate(std::begin(b_dims), std::end(b_dims), 0.0)/b_dims.size();
 
         // variability of quality (voq)
-        float voq = cond_avg + b_avg;
+        float voq = cond_max + b_avg;
         printf("| voq: %7.3f ", voq);
 
         std::vector<double> euler = rotm2eul(UNR);

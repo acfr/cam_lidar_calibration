@@ -1,6 +1,8 @@
 # Camera-LiDAR Calibration
 
-This package estimates the calibration parameters that transforms the camera frame (parent) into the lidar frame (child). We aim to simplify the calibration process by optimising the pose selection process to take away the tedious trial-and-error of having to re-calibrate with different poses until a good calibration is found. We seek to obtain calibration parameters as an estimate with uncertainty that fits the entire scene instead of solely fitting the target, which many existing works struggle with. Our proposed approach overcomes the limitations of existing target-based calibration methods, namely from user error and overfitting of the target. For more details, please take a look at our [paper](https://somearxivlink). 
+This package estimates the calibration parameters that transforms the camera frame (parent) into the lidar frame (child). We aim to simplify the calibration process by optimising the pose selection process to take away the tedious trial-and-error of having to re-calibrate with different poses until a good calibration is found. We seek to obtain calibration parameters as an estimate with uncertainty that fits the entire scene instead of solely fitting the target, which many existing works struggle with. Our proposed approach overcomes the limitations of existing target-based calibration methods, namely from user error and overfitting of the target. For more details, please take a look at our [paper](https://arxiv.org/abs/2103.12287). 
+
+We also provide a [video tutorial](https://youtu.be/WmzEnjmffQU) for this package which you can follow alongside this readme. 
 
 <p align="center">
 <img width="70%" src="img/sensorsetup_visuals.png">
@@ -20,7 +22,7 @@ git clone -c http.sslverify=false https://gitlab.acfr.usyd.edu.au/its/cam_lidar_
 ```
 2. Download ros and python dependencies 
 ```
-sudo apt update && apt-get install -y ros-melodic-pcl-conversions ros-melodic-pcl-ros ros-melodic-tf2-sensor-msgs
+sudo apt update && sudo apt-get install -y ros-melodic-pcl-conversions ros-melodic-pcl-ros ros-melodic-tf2-sensor-msgs
 pip install pandas scipy
 ```
 3. Build the package and source the `setup.bash` or `setup.zsh` file. 
@@ -74,8 +76,8 @@ That's it! If this quick start worked successfully, you can begin using this too
 # 2. Calibration with your own data
 
 To use this package with your own data, ensure that your bag file has the following topics:
-- **Lidar**: 3D pointcloud ([sensor_msgs::PointCloud2](http://docs.ros.org/en/api/sensor_msgs/html/msg/PointCloud2.html))
-- **Monocular camera:** an image ([sensor_msgs::Image](http://docs.ros.org/en/api/sensor_msgs/html/msg/Image.html)) and the corresponding meta-information topic ([sensor_msgs::CameraInfo](http://docs.ros.org/en/api/sensor_msgs/html/msg/CameraInfo.html)). 
+- **Lidar**: 3D pointcloud of point type XYZIR, published as [sensor_msgs::PointCloud2](http://docs.ros.org/en/api/sensor_msgs/html/msg/PointCloud2.html). This package relies on the ring value and so if you don't have that, you need to modify your lidar driver to use this package. 
+- **Monocular camera:** an image published as [sensor_msgs::Image](http://docs.ros.org/en/api/sensor_msgs/html/msg/Image.html) and the corresponding meta-information topic ([sensor_msgs::CameraInfo](http://docs.ros.org/en/api/sensor_msgs/html/msg/CameraInfo.html)). 
 
 All data and output files will be saved in the `cam_lidar_calibration/data/YYYY-MM-DD_HH-MM-SS/` folder. 
 
@@ -129,6 +131,8 @@ roslaunch cam_lidar_calibration run_optimiser.launch import_samples:=false
 ```
 This process can be done online or offline. If you are offline, make sure to play the rosbag using `--pause` flag so that rviz can get the `/tf` topics e.g. `rosbag play --pause mybag.bag`. If you are running a docker container, you can run the bag file on a separate terminal window outside the docker container. 
 
+Make sure to change the image topic to your camera image topic in order to see the video feed. This can be done by editing line 62 of `cam_lidar_calibration.rviz` or open rviz->panels->display, and change the field that is currently `/gmsl/A0/image_color`.
+
 ### 2. Isolate the chessboard
 
 Using the rqt_reconfigure window, modify the values of the x,y and z axes limits to such that it only shows the chessboard. If chessboard is not fully isolated, it may affect the plane-fitting of the chessboard and also lead to high board dimension errors. 
@@ -149,7 +153,7 @@ Place the chessboard facing the sensor pair and click the `capture` button. Make
 
 - Low resolution lidars may struggle to capture boards with low error if there are not enough points on the board. For example, for the VLP-16, we require at least 7 rings on the board for a decent capture. 
 
-- If the chessboard is consistently under or overestimated with the same amount of board error, then it could be that the lidar's internal distance estimation is not properly calibrated. We've provided a param in the `run_optimiser.launch` file that allows you to apply an offset to this distance estimation. For our VLP-16 we had to set `distance_offset_mm=-30`. This should be permanently set in the lidar driver once you've finished calibrating. 
+- If the chessboard is consistently under or overestimated with the same amount of board error, then it could be that the lidar's internal distance estimation is not properly calibrated. Lidars often have a range error of around +/-30mm and this is inconsistent at different ranges. We've provided a param in the `run_optimiser.launch` file that allows you to apply an offset to this distance estimation. Try to set the offset such that you get the lowest average error for your data (you might need to re-capture a couple times to figure this value). For our VLP-16 we had to set `distance_offset_mm=-30`. This should be permanently set in the lidar driver once you've finished calibrating. 
 
 <p  align="center">
     <img width="50%" src="img/distanceoffset.png">
@@ -157,9 +161,9 @@ Place the chessboard facing the sensor pair and click the `capture` button. Make
     <em> In the left image above, we show the same pose at 3 different <b>distance offsets</b>. We add a distance offset by converting the cartesian (xyz) coordinates to polar (r, theta) and add a distance offset to the radius r. When we do this, you can think of it like extending/reducing the radius of a circle. Every shape in that new coordinate system is hence enlarged/shrunk. Increasing the distance offset value increases the chessboard area (+100mm is the largest). The right image is the same as the left, just with a different perspective to show that the increase is in both height and width of the chessboard.</em>
 </p>
 
-**Number and variation of poses**: We recommend that you capture at least 20 poses (more is better) with at least a 2m distance range (from lidar centre) between closest and farthest poses. Below lists some guidelines.
+**Number and variation of poses**: We recommend that you capture at least 20 poses (more is better) with at least a 1-2m distance range (from lidar centre) between closest and farthest poses. Below lists some guidelines.
 
-- Spread the poses out in the calibration range, covering the width and depth of the field of view. For our specific VLP-16 and Baraja Spectrum Scan lidars, we had a range of 1.7m - 4.3m and 2.1m - 5m respectively. 
+- Spread the poses out in the calibration range, covering the width of the image field of view. For our specific VLP-16 and Baraja Spectrum Scan lidars, we had a range of 1.7m - 4m and 2.1m - 5m respectively. 
 
 - Have variation in the yaw and pitch of the board as best as you can. This is explained in the following image. 
 
@@ -178,6 +182,9 @@ The poses are saved (png, pcd, poses.csv) in the `($cam_lidar_calibration)/data/
 ## 2.4 Estimating parameters and assessing reprojection error
 
 After you obtain the calibration csv output file, copy-paste the absolute path of the calibration output file after `csv:=` in the command below with double quotation marks. A histogram with a gaussian fitting should appear. You can choose to visualise a sample if you set the visualise flag. If you wish to visualise a different sample, you can change the particular sample in the `assess_results.launch` file. The reprojection results are shown in the terminal window.
+
+The final estimated calibration parameters can be found in the terminal window or taken from the histogram plots. 
+
 ```
 roslaunch cam_lidar_calibration assess_results.launch csv:="$(rospack find cam_lidar_calibration)/data/vlp/calibration_quickstart.csv" visualise:=true
 ```
@@ -194,16 +201,11 @@ The baseline calibration algorithm was from Verma, 2019. You can find their [pap
 
 Please cite our work if this package helps with your research. 
 ```
-@article{tsai2021,
-   author = {},
-    title = "{}",
-  journal = {},
-archivePrefix = "arXiv",
-   eprint = {},
- primaryClass = "cs.RO",
- keywords = {Computer Science - Robotics, Computer Science - Computer Vision and Pattern Recognition},
-     year = 2021,
-    month = 
+@article{tsai2021optimising,
+  title={Optimising the selection of samples for robust lidar camera calibration},
+  author={Tsai, Darren and Worrall, Stewart and Shan, Mao and Lohr, Anton and Nebot, Eduardo},
+  journal={arXiv preprint arXiv:2103.12287},
+  year={2021}
 }
 ```
 
