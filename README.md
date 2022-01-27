@@ -213,8 +213,7 @@ Please cite our work if this package helps with your research.
   volume={},
   number={},
   pages={2631-2638},
-  doi={10.1109/ITSC48978.2021.9564700}
-}
+  doi={10.1109/ITSC48978.2021.9564700}}
 ```
 
 
