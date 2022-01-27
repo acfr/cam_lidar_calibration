@@ -1,6 +1,8 @@
 # Camera-LiDAR Calibration
 
-This package estimates the calibration parameters that transforms the camera frame (parent) into the lidar frame (child). We aim to simplify the calibration process by optimising the pose selection process to take away the tedious trial-and-error of having to re-calibrate with different poses until a good calibration is found. We seek to obtain calibration parameters as an estimate with uncertainty that fits the entire scene instead of solely fitting the target, which many existing works struggle with. Our proposed approach overcomes the limitations of existing target-based calibration methods, namely from user error and overfitting of the target. For more details, please take a look at our [paper](https://arxiv.org/abs/2103.12287). 
+This is the official code release of the ITSC 2021 paper, ["Optimising the selection of samples for robust lidar camera calibration"](https://arxiv.org/abs/2103.12287). 
+
+This package estimates the calibration parameters that transforms the camera frame (parent) into the lidar frame (child). We aim to simplify the calibration process by optimising the pose selection process to take away the tedious trial-and-error of having to re-calibrate with different poses until a good calibration is found. We seek to obtain calibration parameters as an estimate with uncertainty that fits the entire scene instead of solely fitting the target, which many existing works struggle with. Our proposed approach overcomes the limitations of existing target-based calibration methods, namely from user error and overfitting of the target. For more details, please take a look at our paper.
 
 We also provide a [video tutorial](https://youtu.be/WmzEnjmffQU) for this package which you can follow alongside this readme. 
 
