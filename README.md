@@ -203,11 +203,15 @@ The baseline calibration algorithm was from Verma, 2019. You can find their [pap
 
 Please cite our work if this package helps with your research. 
 ```
-@article{tsai2021optimising,
-  title={Optimising the selection of samples for robust lidar camera calibration},
+@INPROCEEDINGS{tsai2021optimising,
   author={Tsai, Darren and Worrall, Stewart and Shan, Mao and Lohr, Anton and Nebot, Eduardo},
-  journal={arXiv preprint arXiv:2103.12287},
-  year={2021}
+  booktitle={2021 IEEE International Intelligent Transportation Systems Conference (ITSC)}, 
+  title={Optimising the selection of samples for robust lidar camera calibration}, 
+  year={2021},
+  volume={},
+  number={},
+  pages={2631-2638},
+  doi={10.1109/ITSC48978.2021.9564700}
 }
 ```
 
