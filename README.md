@@ -210,7 +210,7 @@ Please cite our work if this package helps with your research.
   booktitle={2021 IEEE International Intelligent Transportation Systems Conference (ITSC)}, 
   title={Optimising the selection of samples for robust lidar camera calibration}, 
   year={2021},
-  publisher = {{IEEE}},
+  publisher = {IEEE},
   pages={2631-2638},
   doi={10.1109/ITSC48978.2021.9564700},
 }
