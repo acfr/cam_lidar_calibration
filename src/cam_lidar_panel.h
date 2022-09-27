@@ -40,6 +40,8 @@ namespace cam_lidar_calibration
     public Q_SLOTS:
 
     protected Q_SLOTS:
+        void captureBackgroundPc();
+        void getBoardDimensions();
         void captureSample();
         void discardSample();
         void optimise();
@@ -54,6 +56,8 @@ namespace cam_lidar_calibration
         ActionClient action_client_;
 
         QLabel* output_label_;
+        QPushButton* capture_background_button_;
+        QPushButton* get_board_dimensions_button_;
         QPushButton* capture_button_;
         QPushButton* discard_button_;
         QPushButton* optimise_button_;

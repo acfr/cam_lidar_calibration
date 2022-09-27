@@ -1,14 +1,14 @@
 # Topics
-camera_topic: "/gmsl/A0/image_color"
-camera_info: "/gmsl/A0/camera_info"
-lidar_topic: "/velodyne/front/points"
+camera_topic: "/image"
+camera_info: "/sekonix_camera/port_b_cam_1/camera_info"
+lidar_topic: "/os_cloud_node/points"
 
 # Dynamic rqt_reconfigure default bounds
 feature_extraction:
   x_min: -10.0
   x_max: 10.0
-  y_min: -8.0
-  y_max: 8.0
+  y_min: -10.0
+  y_max: 10.0
   z_min: -5.0
   z_max: 5.0
   

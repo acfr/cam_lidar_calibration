@@ -16,19 +16,32 @@ namespace cam_lidar_calibration
 
         QVBoxLayout* main_layout = new QVBoxLayout;
         QHBoxLayout* button_layout = new QHBoxLayout;
+        
+        capture_background_button_ = new QPushButton("Capture Background");
+        connect(capture_background_button_, SIGNAL(clicked()), this, SLOT(captureBackgroundPc()));
+
+        get_board_dimensions_button_ = new QPushButton("Get Board Dimensions");
+        connect(get_board_dimensions_button_, SIGNAL(clicked()), this, SLOT(getBoardDimensions()));
+
         capture_button_ = new QPushButton("Capture sample");
         connect(capture_button_, SIGNAL(clicked()), this, SLOT(captureSample()));
+        
         discard_button_ = new QPushButton("Discard last sample");
         connect(discard_button_, SIGNAL(clicked()), this, SLOT(discardSample()));
+
         optimise_button_ = new QPushButton("Optimise");
         optimise_button_->setEnabled(false);
         connect(optimise_button_, SIGNAL(clicked()), this, SLOT(optimise()));
+        
         QTimer* timer = new QTimer;
         connect(timer, SIGNAL(timeout()), this, SLOT(updateResult()));
+        
         timer->start(500);
 
         output_label_ = new QLabel("");
 
+        button_layout->addWidget(capture_background_button_);
+        button_layout->addWidget(get_board_dimensions_button_);
         button_layout->addWidget(capture_button_);
         button_layout->addWidget(discard_button_);
         auto button_group = new QGroupBox();
@@ -38,6 +51,26 @@ namespace cam_lidar_calibration
         main_layout->addWidget(output_label_);
 
         setLayout(main_layout);
+    }
+
+    void CamLidarPanel::captureBackgroundPc()
+    {
+        // Send a service request to capture the background pc
+        Optimise srv;
+        srv.request.operation = Optimise::Request::CAPTURE_BCKGRND;
+        optimise_client_.call(srv);
+        capture_background_button_->setEnabled(true);
+    }
+
+    void CamLidarPanel::getBoardDimensions()
+    {
+        // 1. Capture PCl and subtract background PC to get just the board
+        // 2. Get board dimensions 
+
+        Optimise srv;
+        srv.request.operation = Optimise::Request::CAPTURE_BOARD;
+        optimise_client_.call(srv);
+        get_board_dimensions_button_->setEnabled(true);
     }
 
     void CamLidarPanel::captureSample()

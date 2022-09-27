@@ -171,7 +171,7 @@ class AssessCalibration {
             tf_msg.transform.translation.x = transform.inverse().getOrigin().x();
             tf_msg.transform.translation.y = transform.inverse().getOrigin().y();
             tf_msg.transform.translation.z = transform.inverse().getOrigin().z();
-            
+            printf("\nCalibration params lidar 2 cam (w,x,y,z,x,y,z): %6.10f,%6.10f,%6.10f,%6.10f,%6.10f,%6.10f,%6.10f\n", tf_msg.transform.rotation.w,tf_msg.transform.rotation.x,tf_msg.transform.rotation.y, tf_msg.transform.rotation.z,tf_msg.transform.translation.x,tf_msg.transform.translation.y,tf_msg.transform.translation.z);
             double r_val,y_val,p_val;
             double d1,d2,d3;
             geometry_msgs::Quaternion q = tf_msg.transform.rotation;
@@ -253,19 +253,27 @@ class AssessCalibration {
 
                             // Applying the distortion
                             double r2 = tmpxC * tmpxC + tmpyC * tmpyC;
-                            double r1 = pow(r2, 0.5);
-                            double a0 = std::atan(r1);
-                            double a1;
-                            a1 = a0 * (1 + distcoeff.at<double>(0) * pow(a0, 2) + distcoeff.at<double>(1) * pow(a0, 4) +
-                                    distcoeff.at<double>(2) * pow(a0, 6) + distcoeff.at<double>(3) * pow(a0, 8));
-                            planepointsC.x = (a1 / r1) * tmpxC;
-                            planepointsC.y = (a1 / r1) * tmpyC;
-
+			                if (distortion_model == "fisheye")
+                            {
+                                double r1 = pow(r2, 0.5);
+                                double a0 = std::atan(r1);
+                                double a1;
+                                a1 = a0 * (1 + distcoeff.at<double>(0) * pow(a0, 2) + distcoeff.at<double>(1) * pow(a0, 4) +
+                                        distcoeff.at<double>(2) * pow(a0, 6) + distcoeff.at<double>(3) * pow(a0, 8));
+                                planepointsC.x = (a1 / r1) * tmpxC;
+                                planepointsC.y = (a1 / r1) * tmpyC;
+                            }
+			                else
+                            {
+                                double tmpdist=1+distcoeff.at<double>(0)*r2 + distcoeff.at<double>(1)*r2*r2 + distcoeff.at<double>(4)*r2*r2*r2;
+                                planepointsC.x=tmpxC*tmpdist + 2*distcoeff.at<double>(2)*tmpxC*tmpyC + distcoeff.at<double>(3)*(r2+2*tmpxC*tmpxC);
+                                planepointsC.y=tmpyC*tmpdist + distcoeff.at<double>(2)*(r2+2*tmpyC*tmpyC) + 2*distcoeff.at<double>(3)*tmpxC*tmpyC;
+			                }
                             planepointsC.x = cameramat.at<double>(0, 0) * planepointsC.x + cameramat.at<double>(0, 2);
                             planepointsC.y = cameramat.at<double>(1, 1) * planepointsC.y + cameramat.at<double>(1, 2);
 
                             if (planepointsC.y >= 0 and planepointsC.y < height and planepointsC.x >= 0 and planepointsC.x < width and
-                                tmpzC >= 0 and std::abs(tmpxC) <= 1.35) {
+                                tmpzC >= 0 and std::abs(tmpxC) <= 2.0) {
 
                                 int point_size = 2;
                                 cv::circle(image,

@@ -143,6 +143,12 @@ namespace cam_lidar_calibration
             case Optimise::Request::CAPTURE:
                 ROS_INFO("Capturing sample");
                 break;
+            case Optimise::Request::CAPTURE_BCKGRND:
+                ROS_INFO("Capturing background pointcloud");
+                break;   
+            case Optimise::Request::CAPTURE_BOARD:
+                ROS_INFO("Getting board dimensions");
+                break;                            
             case Optimise::Request::DISCARD:
                 ROS_INFO("Discarding last sample");
                 if (!optimiser_->samples.empty())
@@ -156,7 +162,9 @@ namespace cam_lidar_calibration
         publishBoardPointCloud();
         flag = req.operation;  // read flag published by rviz calibration panel
         // Wait for operation to complete
-        while (flag == Optimise::Request::CAPTURE)
+        while (flag == Optimise::Request::CAPTURE || 
+               flag == Optimise::Request::CAPTURE_BCKGRND ||
+               flag == Optimise::Request::CAPTURE_BOARD)
         {
         }
         res.samples = optimiser_->samples.size();
@@ -855,7 +863,15 @@ namespace cam_lidar_calibration
         distoffset_passthrough(pointcloud, cloud_bounded);
 
         // Publish the experimental region point cloud
-        bounded_cloud_pub_.publish(cloud_bounded);
+        bounded_cloud_pub_.publish(cloud_bounded);//TODO to change to background pc pub
+
+        if (flag == Optimise::Request::CAPTURE_BCKGRND)
+        {
+            ROS_INFO("Processing background sample");
+            background_pc_ = cloud_bounded;
+            flag = Optimise::Request::READY;  // Reset the capture flag
+            ROS_INFO("Ready for capture\n");
+        }
 
         if (flag == Optimise::Request::CAPTURE)
         {

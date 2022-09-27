@@ -103,6 +103,9 @@ namespace cam_lidar_calibration
         bool valid_camera_info;
         ros::NodeHandle private_nh;
         ros::NodeHandle public_nh;
+
+        pcl::PointCloud<pcl::PointXYZIR>::Ptr background_pc_;
+        pcl::PointCloud<pcl::PointXYZIR>::Ptr board_pc_;
     };
 
 }  // namespace cam_lidar_calibration
