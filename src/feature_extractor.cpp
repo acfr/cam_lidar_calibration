@@ -29,11 +29,15 @@
 #include <pcl_ros/point_cloud.h>
 #include <sensor_msgs/image_encodings.h>
 #include <visualization_msgs/MarkerArray.h>
+#include <pcl/octree/octree_pointcloud_changedetector.h>
 
 #include <ros/package.h>
 
+ 
+#include <ctime>
 // For shuffling of generated sets
 #include <algorithm>
+
 
 using cv::findChessboardCorners;
 using cv::Mat_;
@@ -75,7 +79,7 @@ namespace cam_lidar_calibration
         image_pc_sync_->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
 
         board_cloud_pub_ = private_nh.advertise<PointCloud>("chessboard", 1);
-        bounded_cloud_pub_ = private_nh.advertise<PointCloud>("experimental_region", 10);
+        subtracted_cloud_pub_ = private_nh.advertise<PointCloud>("experimental_region", 10);
         optimise_service_ = public_nh.advertiseService("optimiser", &FeatureExtractor::serviceCB, this);
         samples_pub_ = private_nh.advertise<visualization_msgs::MarkerArray>("collected_samples", 0);
         image_publisher = it_->advertise("camera_features", 1);
@@ -145,10 +149,7 @@ namespace cam_lidar_calibration
                 break;
             case Optimise::Request::CAPTURE_BCKGRND:
                 ROS_INFO("Capturing background pointcloud");
-                break;   
-            case Optimise::Request::CAPTURE_BOARD:
-                ROS_INFO("Getting board dimensions");
-                break;                            
+                break;                           
             case Optimise::Request::DISCARD:
                 ROS_INFO("Discarding last sample");
                 if (!optimiser_->samples.empty())
@@ -163,8 +164,7 @@ namespace cam_lidar_calibration
         flag = req.operation;  // read flag published by rviz calibration panel
         // Wait for operation to complete
         while (flag == Optimise::Request::CAPTURE || 
-               flag == Optimise::Request::CAPTURE_BCKGRND ||
-               flag == Optimise::Request::CAPTURE_BOARD)
+               flag == Optimise::Request::CAPTURE_BCKGRND)
         {
         }
         res.samples = optimiser_->samples.size();
@@ -446,14 +446,6 @@ namespace cam_lidar_calibration
         board_cloud_pub_.publish(pc);
     }
 
-    void FeatureExtractor::boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level)
-    {
-        // Read the values corresponding to the motion of slider bars in reconfigure gui
-        bounds_ = config;
-        ROS_INFO("Reconfigure Request: %lf %lf %lf %lf %lf %lf", config.x_min, config.x_max, config.y_min, config.y_max,
-                 config.z_min, config.z_max);
-    }
-
     geometry_msgs::Quaternion normalToQuaternion(const cv::Point3d& normal)
     {
         // Convert to Eigen vector
@@ -469,6 +461,14 @@ namespace cam_lidar_calibration
 //        std::cout << normal.x << "," << normal.y << "," << normal.z << "]" << std::endl;
 //        std::cout << "quaternion(w,x,y,z): " << quat.w << "," << quat.x << "," << quat.y << "," << quat.z << std::endl;
         return quat;
+    }
+
+    void FeatureExtractor::boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level)
+    {
+        // Read the values corresponding to the motion of slider bars in reconfigure gui
+        bounds_ = config;
+        ROS_INFO("Reconfigure Request: %lf %lf %lf %lf %lf %lf", config.x_min, config.x_max, config.y_min, config.y_max,
+                 config.z_min, config.z_max);
     }
 
     void FeatureExtractor::visualiseSamples()
@@ -686,24 +686,11 @@ namespace cam_lidar_calibration
         return std::make_tuple(corner_vectors, chessboard_normal);
     }
 
+    //Pushes the board cloud into pc_samples
     std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>
     FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud, OptimisationSample &sample)
     {
-        PointCloud::Ptr cloud_filtered(new PointCloud);
-        // Filter out the board point cloud
-        // find the point with max height(z val) in cloud_passthrough
-        pcl::PointXYZIR cloud_min, cloud_max;
-        pcl::getMinMax3D(*cloud, cloud_min, cloud_max);
-        double z_max = cloud_max.z;
-        // subtract by approximate diagonal length (in metres)
-        double diag = std::hypot(i_params.board_dimensions.height, i_params.board_dimensions.width) /
-                      1000.0;  // board dimensions are in mm
-        double z_min = z_max - diag;
-        pcl::PassThrough<pcl::PointXYZIR> pass_z;
-        pass_z.setFilterFieldName("z");
-        pass_z.setFilterLimits(z_min, z_max);
-        pass_z.setInputCloud(cloud);
-        pass_z.filter(*cloud_filtered);  // board point cloud
+        if(cloud->size() > 0) ROS_INFO("CLOUD HAS POINTS %d", cloud->size());
 
         // Fit a plane through the board point cloud
         // Inliers give the indices of the points that are within the RANSAC threshold
@@ -715,9 +702,10 @@ namespace cam_lidar_calibration
         seg.setMethodType(pcl::SAC_RANSAC);
         seg.setMaxIterations(1000);
         seg.setDistanceThreshold(0.004);
-        pcl::ExtractIndices<pcl::PointXYZIR> extract;
-        seg.setInputCloud(cloud_filtered);
+        seg.setInputCloud(cloud);
         seg.segment(*inliers, *coefficients);
+
+        ROS_INFO("CLOUD SIZE %d", cloud->size());
 
         // Check that segmentation succeeded
         PointCloud::Ptr cloud_projected(new PointCloud);
@@ -736,10 +724,12 @@ namespace cam_lidar_calibration
         // When it freezes the chessboard after capture, what you see are the inlier points (filtered from the original)
         pcl::ProjectInliers<pcl::PointXYZIR> proj;
         proj.setModelType(pcl::SACMODEL_PLANE);
-        proj.setInputCloud(cloud_filtered);
+        proj.setInputCloud(cloud);
         proj.setModelCoefficients(coefficients);
         proj.filter(*cloud_projected);
 
+
+        ROS_INFO("PROJECTED CLOUD SIZE %d", cloud_projected->size());
 
         // Publish the projected inliers
         pc_samples_.push_back(cloud_projected);
@@ -836,13 +826,14 @@ namespace cam_lidar_calibration
                 distoffset_pcl->push_back(point);
             }
             passthrough(distoffset_pcl, output_pc);
-        } else {
+        } 
+        else 
+        {
             passthrough(input_pc, output_pc);
         }
-        
     }
 
-// Extract features of interest
+    // Extract features of interest
     void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& image,
                                                    const PointCloud::ConstPtr& pointcloud)
     {
@@ -859,18 +850,19 @@ namespace cam_lidar_calibration
             }
             lidar_frame_ = pointcloud->header.frame_id;
         }
-        PointCloud::Ptr cloud_bounded(new PointCloud);
-        distoffset_passthrough(pointcloud, cloud_bounded);
-
-        // Publish the experimental region point cloud
-        bounded_cloud_pub_.publish(cloud_bounded);//TODO to change to background pc pub
+        PointCloud::Ptr distoffset_cloud(new PointCloud);
+        distoffset_passthrough(pointcloud, distoffset_cloud);
+        subtracted_cloud_pub_.publish(distoffset_cloud);
 
         if (flag == Optimise::Request::CAPTURE_BCKGRND)
         {
             ROS_INFO("Processing background sample");
-            background_pc_ = cloud_bounded;
+            background_pc_samples_.clear();
+            background_pc_samples_.push_back(distoffset_cloud);
             flag = Optimise::Request::READY;  // Reset the capture flag
-            ROS_INFO("Ready for capture\n");
+            ROS_INFO("Ready to capture board sample.\n");
+            ROS_INFO("Position board in scene and press Get Board Dimensions\n");
+            return;
         }
 
         if (flag == Optimise::Request::CAPTURE)
@@ -894,10 +886,49 @@ namespace cam_lidar_calibration
             sample.camera_normal = cv::Point3d(chessboard_normal);
             sample.pixeltometre = metreperpixel_cbdiag;
 
+            ROS_INFO("background sample size %d", background_pc_samples_[0]->size());
+            ROS_INFO("INPUT sample size %d", distoffset_cloud->size());
+
+            // Octree resolution - side length of octree voxels
+            float resolution = 0.2f;
+
+            // Instantiate octree-based point cloud change detection class
+            pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZIR> octree(resolution);
+
+            // Add points from cloudA to octree
+            octree.setInputCloud(background_pc_samples_[0]);
+            octree.addPointsFromInputCloud();
+        
+            // Switch octree buffers: This resets octree but keeps previous tree structure in memory.
+            octree.switchBuffers();
+
+            // Add points from cloudB to octree
+            octree.setInputCloud(distoffset_cloud);
+            octree.addPointsFromInputCloud();
+        
+            std::vector<int> newPointIdxVector;
+        
+            // Get vector of point indices from octree voxels which did not exist in previous buffer
+            octree.getPointIndicesFromNewVoxels(newPointIdxVector);
+
+            PointCloud::Ptr subtracted_pc(new PointCloud);
+
+            ROS_INFO("SIZE OF OCTREE %d", newPointIdxVector.size());
+
+            for(std::size_t i = 0; i < newPointIdxVector.size(); ++i)
+            {
+                subtracted_pc->push_back((*distoffset_cloud)[newPointIdxVector[i]]);
+            }
+
+            // Publish the board point cloud after background subtraction
+            subtracted_cloud_pub_.publish(subtracted_pc);
+
             // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
-            auto [cloud_projected, lidar_normal] = extractBoard(cloud_bounded, sample);
+            auto [cloud_projected, lidar_normal] = extractBoard(subtracted_pc, sample);
             if (cloud_projected->points.size() == 0)
             {
+                flag = Optimise::Request::READY;
+                ROS_INFO("Ready for capture\n");
                 return;
             }
             sample.lidar_normal = lidar_normal;
@@ -1062,7 +1093,7 @@ namespace cam_lidar_calibration
             std::string full_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_full.pcd" ;              
             
             ROS_ASSERT( cv::imwrite( img_filepath,  cv_ptr->image ) );   
-            pcl::io::savePCDFileASCII (target_pcd_filepath, *cloud_bounded);
+            pcl::io::savePCDFileASCII (target_pcd_filepath, *subtracted_pc);
             pcl::io::savePCDFileASCII (full_pcd_filepath, *pointcloud);
             ROS_INFO_STREAM("Image and pcd file saved");
 
@@ -1102,7 +1133,7 @@ namespace cam_lidar_calibration
         }  // if (flag == Optimise::Request::CAPTURE)
     }  // End of extractRegionOfInterest
 
-// Get current date/time, format is YYYY-MM-DD-HH:mm:ss
+    // Get current date/time, format is YYYY-MM-DD-HH:mm:ss
     std::string FeatureExtractor::getDateTime()
     {
         auto time = std::time(nullptr);

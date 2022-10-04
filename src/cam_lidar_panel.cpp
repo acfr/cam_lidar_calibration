@@ -66,11 +66,6 @@ namespace cam_lidar_calibration
     {
         // 1. Capture PCl and subtract background PC to get just the board
         // 2. Get board dimensions 
-
-        Optimise srv;
-        srv.request.operation = Optimise::Request::CAPTURE_BOARD;
-        optimise_client_.call(srv);
-        get_board_dimensions_button_->setEnabled(true);
     }
 
     void CamLidarPanel::captureSample()

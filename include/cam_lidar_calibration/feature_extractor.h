@@ -40,18 +40,21 @@ namespace cam_lidar_calibration
         void extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img,
                                      const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& pc);
         bool serviceCB(Optimise::Request& req, Optimise::Response& res);
-        void boundsCB(boundsConfig& config, uint32_t level);
 
         void optimise(const RunOptimiseGoalConstPtr& goal,
                       actionlib::SimpleActionServer<cam_lidar_calibration::RunOptimiseAction>* as);
 
         void visualiseSamples();
 
+        void boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level);
+
         bool import_samples;
 
     private:
+
         void passthrough(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
                          pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
+
         std::tuple<std::vector<cv::Point3d>, cv::Mat> locateChessboard(const sensor_msgs::Image::ConstPtr& image);
         auto chessboardProjection(const std::vector<cv::Point2d>& corners, const cv_bridge::CvImagePtr& cv_ptr);
         void publishBoardPointCloud();
@@ -88,7 +91,7 @@ namespace cam_lidar_calibration
         int num_samples = 0;
 
         std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> pc_samples_;
-        ros::Publisher board_cloud_pub_, bounded_cloud_pub_;
+        ros::Publisher board_cloud_pub_, subtracted_cloud_pub_;
         ros::Publisher samples_pub_;
         image_transport::Publisher image_publisher;
         ros::ServiceServer optimise_service_;
@@ -104,8 +107,8 @@ namespace cam_lidar_calibration
         ros::NodeHandle private_nh;
         ros::NodeHandle public_nh;
 
-        pcl::PointCloud<pcl::PointXYZIR>::Ptr background_pc_;
-        pcl::PointCloud<pcl::PointXYZIR>::Ptr board_pc_;
+        std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> background_pc_samples_;
+
     };
 
 }  // namespace cam_lidar_calibration

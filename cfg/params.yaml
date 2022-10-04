@@ -1,6 +1,6 @@
 # Topics
 camera_topic: "/image"
-camera_info: "/sekonix_camera/port_b_cam_1/camera_info"
+camera_info: "/sekonix_camera/port_a_cam_0/camera_info"
 lidar_topic: "/os_cloud_node/points"
 
 # Dynamic rqt_reconfigure default bounds
