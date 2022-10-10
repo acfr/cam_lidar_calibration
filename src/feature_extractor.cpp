@@ -77,7 +77,8 @@ namespace cam_lidar_calibration
         pc_sub_ = std::make_shared<pc_sub_type>(private_nh, i_params.lidar_topic, queue_rate_);
 
         image_pc_sync_ = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(
-                ImageLidarSyncPolicy(queue_rate_), *image_sub_, *pc_sub_);
+                                ImageLidarSyncPolicy(queue_rate_), *image_sub_, *pc_sub_
+                            );
         image_pc_sync_->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
 
         board_cloud_pub_ = private_nh.advertise<PointCloud>("chessboard", 1);
@@ -335,7 +336,7 @@ namespace cam_lidar_calibration
 
             for (auto& sample : optimiser_->sets[i])
             {
-                float err_dim = abs(sample.widths[0] - i_params.board_dimensions.width)+abs(sample.widths[1] - i_params.board_dimensions.width)+abs(sample.heights[0] - i_params.board_dimensions.height)+abs(sample.heights[1] - i_params.board_dimensions.height);
+                float err_dim = abs(sample.widths[0] - board_width_)+abs(sample.widths[1] - board_width_)+abs(sample.heights[0] - board_height_)+abs(sample.heights[1] - board_height_);
                 be.push_back(err_dim);
 
                 cv::Mat cn = cv::Mat(sample.camera_normal).reshape(1).t();
@@ -571,17 +572,17 @@ namespace cam_lidar_calibration
         // chessboard corners, middle square corners, board corners and centre
         std::vector<cv::Point3d> board_corners_3d;
         // Board corner coordinates from the centre of the chessboard
-        board_corners_3d.push_back(cv::Point3d((i_params.board_dimensions.width - i_params.cb_translation_error.x)/2.0,
-                                                (i_params.board_dimensions.height - i_params.cb_translation_error.y)/2.0,0.0));
+        board_corners_3d.push_back(cv::Point3d((board_width_ - i_params.cb_translation_error.x)/2.0,
+                                                (board_height_ - i_params.cb_translation_error.y)/2.0,0.0));
 
-        board_corners_3d.push_back(cv::Point3d(-(i_params.board_dimensions.width + i_params.cb_translation_error.x)/2.0,
-                                               (i_params.board_dimensions.height - i_params.cb_translation_error.y)/2.0,0.0));
+        board_corners_3d.push_back(cv::Point3d(-(board_width_ + i_params.cb_translation_error.x)/2.0,
+                                               (board_height_ - i_params.cb_translation_error.y)/2.0,0.0));
 
-        board_corners_3d.push_back(cv::Point3d(-(i_params.board_dimensions.width + i_params.cb_translation_error.x)/2.0,
-                                               -(i_params.board_dimensions.height + i_params.cb_translation_error.y)/2.0,0.0));
+        board_corners_3d.push_back(cv::Point3d(-(board_width_ + i_params.cb_translation_error.x)/2.0,
+                                               -(board_height_ + i_params.cb_translation_error.y)/2.0,0.0));
 
-        board_corners_3d.push_back(cv::Point3d((i_params.board_dimensions.width - i_params.cb_translation_error.x)/2.0,
-                                               -(i_params.board_dimensions.height + i_params.cb_translation_error.y)/2.0,0.0));
+        board_corners_3d.push_back(cv::Point3d((board_width_ - i_params.cb_translation_error.x)/2.0,
+                                               -(board_height_ + i_params.cb_translation_error.y)/2.0,0.0));
         // Board centre coordinates from the centre of the chessboard (due to incorrect placement of chessboard on board)
         board_corners_3d.push_back(cv::Point3d(-i_params.cb_translation_error.x/2.0, -i_params.cb_translation_error.y/2.0, 0.0));
 
@@ -661,6 +662,7 @@ namespace cam_lidar_calibration
             return std::make_tuple(empty_corners, empty_normal);
         }
         ROS_INFO("Chessboard found");
+        
         // Find corner points with sub-pixel accuracy
         // This throws an exception if the corner points are doubles and not floats!?!
         cornerSubPix(gray, cornersf, Size(11, 11), Size(-1, -1), TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
