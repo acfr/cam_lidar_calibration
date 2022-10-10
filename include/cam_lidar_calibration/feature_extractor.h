@@ -91,7 +91,7 @@ namespace cam_lidar_calibration
         int num_samples = 0;
 
         std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> pc_samples_;
-        ros::Publisher board_cloud_pub_, subtracted_cloud_pub_;
+        ros::Publisher board_cloud_pub_, subtracted_cloud_pub_, experimental_region_pub_;
         ros::Publisher samples_pub_;
         image_transport::Publisher image_publisher;
         ros::ServiceServer optimise_service_;
@@ -108,7 +108,7 @@ namespace cam_lidar_calibration
         ros::NodeHandle public_nh;
 
         std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> background_pc_samples_;
-
+        float board_width_, board_height_;
     };
 
 }  // namespace cam_lidar_calibration

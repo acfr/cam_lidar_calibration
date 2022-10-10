@@ -30,6 +30,8 @@
 #include <sensor_msgs/image_encodings.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <pcl/octree/octree_pointcloud_changedetector.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/filters/radius_outlier_removal.h>
 
 #include <ros/package.h>
 
@@ -79,7 +81,9 @@ namespace cam_lidar_calibration
         image_pc_sync_->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
 
         board_cloud_pub_ = private_nh.advertise<PointCloud>("chessboard", 1);
-        subtracted_cloud_pub_ = private_nh.advertise<PointCloud>("experimental_region", 10);
+        subtracted_cloud_pub_ = private_nh.advertise<PointCloud>("subtracted_pc", 1);
+
+        experimental_region_pub_ = private_nh.advertise<PointCloud>("experimental_region", 10);
         optimise_service_ = public_nh.advertiseService("optimiser", &FeatureExtractor::serviceCB, this);
         samples_pub_ = private_nh.advertise<visualization_msgs::MarkerArray>("collected_samples", 0);
         image_publisher = it_->advertise("camera_features", 1);
@@ -467,8 +471,8 @@ namespace cam_lidar_calibration
     {
         // Read the values corresponding to the motion of slider bars in reconfigure gui
         bounds_ = config;
-        ROS_INFO("Reconfigure Request: %lf %lf %lf %lf %lf %lf", config.x_min, config.x_max, config.y_min, config.y_max,
-                 config.z_min, config.z_max);
+        ROS_INFO("Reconfigure Request: %lf %lf %lf %lf %lf %lf %d %lf", config.x_min, config.x_max, config.y_min, config.y_max,
+                 config.z_min, config.z_max, config.k, config.z, config.voxel_res);
     }
 
     void FeatureExtractor::visualiseSamples()
@@ -690,8 +694,6 @@ namespace cam_lidar_calibration
     std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>
     FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud, OptimisationSample &sample)
     {
-        if(cloud->size() > 0) ROS_INFO("CLOUD HAS POINTS %d", cloud->size());
-
         // Fit a plane through the board point cloud
         // Inliers give the indices of the points that are within the RANSAC threshold
         pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients());
@@ -704,8 +706,6 @@ namespace cam_lidar_calibration
         seg.setDistanceThreshold(0.004);
         seg.setInputCloud(cloud);
         seg.segment(*inliers, *coefficients);
-
-        ROS_INFO("CLOUD SIZE %d", cloud->size());
 
         // Check that segmentation succeeded
         PointCloud::Ptr cloud_projected(new PointCloud);
@@ -727,9 +727,6 @@ namespace cam_lidar_calibration
         proj.setInputCloud(cloud);
         proj.setModelCoefficients(coefficients);
         proj.filter(*cloud_projected);
-
-
-        ROS_INFO("PROJECTED CLOUD SIZE %d", cloud_projected->size());
 
         // Publish the projected inliers
         pc_samples_.push_back(cloud_projected);
@@ -850,17 +847,17 @@ namespace cam_lidar_calibration
             }
             lidar_frame_ = pointcloud->header.frame_id;
         }
+
         PointCloud::Ptr distoffset_cloud(new PointCloud);
         distoffset_passthrough(pointcloud, distoffset_cloud);
-        subtracted_cloud_pub_.publish(distoffset_cloud);
+        experimental_region_pub_.publish(distoffset_cloud);
 
         if (flag == Optimise::Request::CAPTURE_BCKGRND)
         {
-            ROS_INFO("Processing background sample");
             background_pc_samples_.clear();
             background_pc_samples_.push_back(distoffset_cloud);
             flag = Optimise::Request::READY;  // Reset the capture flag
-            ROS_INFO("Ready to capture board sample.\n");
+            ROS_INFO("Ready to capture board sample.");
             ROS_INFO("Position board in scene and press Get Board Dimensions\n");
             return;
         }
@@ -886,14 +883,8 @@ namespace cam_lidar_calibration
             sample.camera_normal = cv::Point3d(chessboard_normal);
             sample.pixeltometre = metreperpixel_cbdiag;
 
-            ROS_INFO("background sample size %d", background_pc_samples_[0]->size());
-            ROS_INFO("INPUT sample size %d", distoffset_cloud->size());
-
-            // Octree resolution - side length of octree voxels
-            float resolution = 0.2f;
-
             // Instantiate octree-based point cloud change detection class
-            pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZIR> octree(resolution);
+            pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZIR> octree(bounds_.voxel_res);
 
             // Add points from cloudA to octree
             octree.setInputCloud(background_pc_samples_[0]);
@@ -913,18 +904,26 @@ namespace cam_lidar_calibration
 
             PointCloud::Ptr subtracted_pc(new PointCloud);
 
-            ROS_INFO("SIZE OF OCTREE %d", newPointIdxVector.size());
-
             for(std::size_t i = 0; i < newPointIdxVector.size(); ++i)
             {
                 subtracted_pc->push_back((*distoffset_cloud)[newPointIdxVector[i]]);
             }
 
+            PointCloud::Ptr cloud_filtered(new PointCloud);
+
+            // Create the filtering object
+            pcl::StatisticalOutlierRemoval<pcl::PointXYZIR> sor;
+            sor.setInputCloud(subtracted_pc);
+            sor.setMeanK(bounds_.k);
+            sor.setStddevMulThresh(bounds_.z);
+            sor.filter(*cloud_filtered);
+
             // Publish the board point cloud after background subtraction
-            subtracted_cloud_pub_.publish(subtracted_pc);
+            cloud_filtered->header.frame_id = lidar_frame_;
+            subtracted_cloud_pub_.publish(cloud_filtered);
 
             // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
-            auto [cloud_projected, lidar_normal] = extractBoard(subtracted_pc, sample);
+            auto [cloud_projected, lidar_normal] = extractBoard(cloud_filtered, sample);
             if (cloud_projected->points.size() == 0)
             {
                 flag = Optimise::Request::READY;
@@ -1017,7 +1016,8 @@ namespace cam_lidar_calibration
             // Flip the lidar normal if it is in the wrong direction (mainly happens for rear facing cameras)
             double top_down_radius = sqrt(pow(sample.lidar_centre.x,2)+pow(sample.lidar_centre.y,2));
             double vector_dist = sqrt(pow(sample.lidar_centre.x + sample.lidar_normal.x,2) +
-            	pow(sample.lidar_centre.y + sample.lidar_normal.y,2));
+                                      pow(sample.lidar_centre.y + sample.lidar_normal.y,2));
+
             if (vector_dist > top_down_radius) {
             	sample.lidar_normal.x = -sample.lidar_normal.x;
             	sample.lidar_normal.y = -sample.lidar_normal.y;
@@ -1035,99 +1035,114 @@ namespace cam_lidar_calibration
             double w1 = lengths[1];
             double h0 = lengths[2];
             double h1 = lengths[3];
-            sample.widths.push_back(w0);
-            sample.widths.push_back(w1);
-            sample.heights.push_back(h0);
-            sample.heights.push_back(h1);
 
-            double gt_area = (double)i_params.board_dimensions.width/1000*(double)i_params.board_dimensions.height/1000;
-            double b_area = (w0/1000*h0/1000)/2 + (w1/1000*h1/1000)/2;
+            // If it is the first sample get the dimensions of the board
+            if(pc_samples_.size() == 1)
+            {
+                board_height_ = (h0+h1)/2;
+                board_width_ = (w0+w1)/2;
 
-            // Board dimension errors
-            double w0_diff = abs(w0 - i_params.board_dimensions.width);
-            double w1_diff = abs(w1 - i_params.board_dimensions.width);
-            double h0_diff = abs(h0 - i_params.board_dimensions.height);
-            double h1_diff = abs(h1 - i_params.board_dimensions.height);
-            double be_dim_err = w0_diff + w1_diff + h0_diff + h1_diff;
+                printf("Board height = %6.2fmm \n", board_height_);
+                printf("Board width  = %6.2fmm \n", board_width_);
+            }
+            else // For every other sample get the dimensions and compare to the first one
+            {
+                sample.widths.push_back(w0);
+                sample.widths.push_back(w1);
+                sample.heights.push_back(h0);
+                sample.heights.push_back(h1);
 
-            double distance = sqrt(pow(sample.lidar_centre.x/1000-0, 2) + pow(sample.lidar_centre.y/1000-0, 2) + pow(sample.lidar_centre.z/1000-0, 2));
-            sample.distance_from_origin = distance;
-            printf("\n--- Sample %d ---\n", num_samples);
-            printf("Measured board has: dimensions = %dx%d mm; area = %6.5f m^2\n", i_params.board_dimensions.width, i_params.board_dimensions.height, gt_area);
-            printf("Distance = %5.2f m\n", sample.distance_from_origin);
-            printf("Board angles     = %5.2f,%5.2f,%5.2f,%5.2f degrees\n",a0, a1, a2, a3);
-            printf("Board area       = %7.5f m^2 (%+4.5f m^2)\n", b_area, b_area-gt_area);
-            printf("Board avg height = %6.2fmm (%+4.2fmm)\n", (h0+h1)/2, (h0+h1)/2-i_params.board_dimensions.height);
-            printf("Board avg width  = %6.2fmm (%+4.2fmm)\n", (w0+w1)/2, (w0+w1)/2-i_params.board_dimensions.width);
-            printf("Board dim        = %6.2f,%6.2f,%6.2f,%6.2f mm\n", w0, h0, h1, w1);
-            printf("Board dim error  = %7.2f\n\n", be_dim_err);
+                double gt_area = (double)board_width_/1000*(double)board_height_/1000;
+                double b_area = (w0/1000*h0/1000)/2 + (w1/1000*h1/1000)/2;
 
-            // If the lidar board dim is more than 10% of the measured, then reject sample
-            if (abs(w0-i_params.board_dimensions.width) > i_params.board_dimensions.width*0.1 |
-                abs(w1 - i_params.board_dimensions.width) > i_params.board_dimensions.width * 0.1 |
-                abs(h0 - i_params.board_dimensions.height) > i_params.board_dimensions.height * 0.1 |
-                abs(h1 - i_params.board_dimensions.height) > i_params.board_dimensions.height * 0.1) {
-                ROS_ERROR("Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try capturing again");
-                pc_samples_.pop_back();
-                num_samples--;
-                flag = Optimise::Request::READY;
-                ROS_INFO("Ready for capture\n");
-                return;
+                // Board dimension errors
+                double w0_diff = abs(w0 - board_width_);
+                double w1_diff = abs(w1 - board_width_);
+                double h0_diff = abs(h0 - board_height_);
+                double h1_diff = abs(h1 - board_height_);
+                double be_dim_err = w0_diff + w1_diff + h0_diff + h1_diff;
+
+                double distance = sqrt(pow(sample.lidar_centre.x/1000-0, 2) + pow(sample.lidar_centre.y/1000-0, 2) + pow(sample.lidar_centre.z/1000-0, 2));
+                sample.distance_from_origin = distance;
+                printf("\n--- Sample %d ---\n", num_samples);
+                printf("Measured board has: dimensions = %6.5f x %6.5f mm; area = %6.5f m^2\n", board_width_, board_height_, gt_area);
+                printf("Distance = %5.2f m\n", sample.distance_from_origin);
+                printf("Board angles     = %5.2f,%5.2f,%5.2f,%5.2f degrees\n",a0, a1, a2, a3);
+                printf("Board area       = %7.5f m^2 (%+4.5f m^2)\n", b_area, b_area-gt_area);
+                printf("Board avg height = %6.2fmm (%+4.2fmm)\n", (h0+h1)/2, (h0+h1)/2-board_height_);
+                printf("Board avg width  = %6.2fmm (%+4.2fmm)\n", (w0+w1)/2, (w0+w1)/2-board_width_);
+                printf("Board dim        = %6.2f,%6.2f,%6.2f,%6.2f mm\n", w0, h0, h1, w1);
+                printf("Board dim error  = %7.2f\n\n", be_dim_err);
+
+                // If the lidar board dim is more than 10% of the measured, then reject sample
+                if (abs(w0-board_width_) > board_width_*0.1 |
+                    abs(w1 - board_width_) > board_width_ * 0.1 |
+                    abs(h0 - board_height_) > board_height_ * 0.1 |
+                    abs(h1 - board_height_) > board_height_ * 0.1) 
+                {
+                    ROS_ERROR("Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try capturing again");
+                    pc_samples_.pop_back();
+                    num_samples--;
+                    flag = Optimise::Request::READY;
+                    ROS_INFO("Ready for capture\n");
+                    return;
+                }
+
+                ROS_INFO("Found line coefficients and outlined chessboard");
+                publishBoardPointCloud();
+
+                cv_bridge::CvImagePtr cv_ptr;
+                cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
+
+                // Save image 
+                if(boost::filesystem::create_directory(newdatafolder))
+                {   
+                    boost::filesystem::create_directory(newdatafolder + "/images");
+                    boost::filesystem::create_directory(newdatafolder + "/pcd");
+                    ROS_INFO_STREAM("Save data folder created at " << newdatafolder);
+                } 
+                std::string img_filepath = newdatafolder + "/images/pose" + std::to_string(num_samples)  + ".png" ;              
+                std::string target_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_target.pcd" ;              
+                std::string full_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_full.pcd" ;              
+                
+                ROS_ASSERT( cv::imwrite( img_filepath,  cv_ptr->image ) );   
+                pcl::io::savePCDFileASCII (target_pcd_filepath, *subtracted_pc);
+                pcl::io::savePCDFileASCII (full_pcd_filepath, *pointcloud);
+                ROS_INFO_STREAM("Image and pcd file saved");
+
+                if (num_samples == 1)
+                {
+                    // Check if save_dir has camera_info topic saved
+                    std::string pkg_path = ros::package::getPath("cam_lidar_calibration");
+
+                    std::ofstream camera_info_file;
+                    std::string camera_info_path = pkg_path + "/cfg/camera_info.yaml";
+                    ROS_INFO_STREAM("Camera_info saved at: " << camera_info_path);
+                    camera_info_file.open(camera_info_path, std::ios_base::out | std::ios_base::trunc);
+                    std::string dist_model = (i_params.fisheye_model) ? "fisheye": "non-fisheye";
+                    camera_info_file << "distortion_model: \"" << dist_model << "\"\n";
+                    camera_info_file << "width: " << i_params.image_size.first << "\n";
+                    camera_info_file << "height: " << i_params.image_size.second << "\n";
+                    camera_info_file << "D: [" << i_params.distcoeff.at<double>(0)
+                                            << "," << i_params.distcoeff.at<double>(1)
+                                            << "," << i_params.distcoeff.at<double>(2)
+                                            << "," << i_params.distcoeff.at<double>(3) << "]\n";
+                    camera_info_file << "K: [" << i_params.cameramat.at<double>(0,0)
+                                            << ",0.0"
+                                            << "," << i_params.cameramat.at<double>(0,2)
+                                            << ",0.0"
+                                            << "," << i_params.cameramat.at<double>(1,1)
+                                            << "," << i_params.cameramat.at<double>(1,2)
+                                            << ",0.0,0.0" 
+                                            << "," << i_params.cameramat.at<double>(2, 2) 
+                                            << "]\n";
+                    camera_info_file.close();
+                }
+
+                // Push this sample to the optimiser
+                optimiser_->samples.push_back(sample);
             }
 
-            ROS_INFO("Found line coefficients and outlined chessboard");
-            publishBoardPointCloud();
-
-            cv_bridge::CvImagePtr cv_ptr;
-            cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
-
-            // Save image 
-            if(boost::filesystem::create_directory(newdatafolder))
-            {   
-                boost::filesystem::create_directory(newdatafolder + "/images");
-                boost::filesystem::create_directory(newdatafolder + "/pcd");
-                ROS_INFO_STREAM("Save data folder created at " << newdatafolder);
-            } 
-            std::string img_filepath = newdatafolder + "/images/pose" + std::to_string(num_samples)  + ".png" ;              
-            std::string target_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_target.pcd" ;              
-            std::string full_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_full.pcd" ;              
-            
-            ROS_ASSERT( cv::imwrite( img_filepath,  cv_ptr->image ) );   
-            pcl::io::savePCDFileASCII (target_pcd_filepath, *subtracted_pc);
-            pcl::io::savePCDFileASCII (full_pcd_filepath, *pointcloud);
-            ROS_INFO_STREAM("Image and pcd file saved");
-
-
-            if (num_samples == 1){
-                // Check if save_dir has camera_info topic saved
-                std::string pkg_path = ros::package::getPath("cam_lidar_calibration");
-
-                std::ofstream camera_info_file;
-                std::string camera_info_path = pkg_path + "/cfg/camera_info.yaml";
-                ROS_INFO_STREAM("Camera_info saved at: " << camera_info_path);
-                camera_info_file.open(camera_info_path, std::ios_base::out | std::ios_base::trunc);
-                std::string dist_model = (i_params.fisheye_model) ? "fisheye": "non-fisheye";
-                camera_info_file << "distortion_model: \"" << dist_model << "\"\n";
-                camera_info_file << "width: " << i_params.image_size.first << "\n";
-                camera_info_file << "height: " << i_params.image_size.second << "\n";
-                camera_info_file << "D: [" << i_params.distcoeff.at<double>(0)
-                                        << "," << i_params.distcoeff.at<double>(1)
-                                        << "," << i_params.distcoeff.at<double>(2)
-                                        << "," << i_params.distcoeff.at<double>(3) << "]\n";
-                camera_info_file << "K: [" << i_params.cameramat.at<double>(0,0)
-                                        << ",0.0"
-                                        << "," << i_params.cameramat.at<double>(0,2)
-                                        << ",0.0"
-                                        << "," << i_params.cameramat.at<double>(1,1)
-                                        << "," << i_params.cameramat.at<double>(1,2)
-                                        << ",0.0,0.0" 
-                                        << "," << i_params.cameramat.at<double>(2, 2) 
-                                        << "]\n";
-                camera_info_file.close();
-            }
-
-            // Push this sample to the optimiser
-            optimiser_->samples.push_back(sample);
             flag = Optimise::Request::READY;  // Reset the capture flag
             ROS_INFO("Ready for capture\n");
         }  // if (flag == Optimise::Request::CAPTURE)

@@ -5,12 +5,15 @@ lidar_topic: "/os_cloud_node/points"
 
 # Dynamic rqt_reconfigure default bounds
 feature_extraction:
-  x_min: -10.0
+  x_min: 3.0
   x_max: 10.0
-  y_min: -10.0
-  y_max: 10.0
+  y_min: -4.0
+  y_max: 4.0
   z_min: -5.0
-  z_max: 5.0
+  z_max: 0.0
+  k: 50
+  z: 1
+  voxel_res: 0.4
   
 # Properties of chessboard calibration target
 chessboard:

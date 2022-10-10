@@ -20,13 +20,12 @@ namespace cam_lidar_calibration
         capture_background_button_ = new QPushButton("Capture Background");
         connect(capture_background_button_, SIGNAL(clicked()), this, SLOT(captureBackgroundPc()));
 
-        get_board_dimensions_button_ = new QPushButton("Get Board Dimensions");
-        connect(get_board_dimensions_button_, SIGNAL(clicked()), this, SLOT(getBoardDimensions()));
-
         capture_button_ = new QPushButton("Capture sample");
+        capture_button_->setEnabled(false);
         connect(capture_button_, SIGNAL(clicked()), this, SLOT(captureSample()));
         
         discard_button_ = new QPushButton("Discard last sample");
+        discard_button_->setEnabled(false);
         connect(discard_button_, SIGNAL(clicked()), this, SLOT(discardSample()));
 
         optimise_button_ = new QPushButton("Optimise");
@@ -41,7 +40,6 @@ namespace cam_lidar_calibration
         output_label_ = new QLabel("");
 
         button_layout->addWidget(capture_background_button_);
-        button_layout->addWidget(get_board_dimensions_button_);
         button_layout->addWidget(capture_button_);
         button_layout->addWidget(discard_button_);
         auto button_group = new QGroupBox();
@@ -59,13 +57,7 @@ namespace cam_lidar_calibration
         Optimise srv;
         srv.request.operation = Optimise::Request::CAPTURE_BCKGRND;
         optimise_client_.call(srv);
-        capture_background_button_->setEnabled(true);
-    }
-
-    void CamLidarPanel::getBoardDimensions()
-    {
-        // 1. Capture PCl and subtract background PC to get just the board
-        // 2. Get board dimensions 
+        capture_button_->setEnabled(true);
     }
 
     void CamLidarPanel::captureSample()
@@ -73,6 +65,7 @@ namespace cam_lidar_calibration
         Optimise srv;
         srv.request.operation = Optimise::Request::CAPTURE;
         optimise_client_.call(srv);
+        discard_button_->setEnabled(true);
         optimise_button_->setEnabled(true);
     }
 
@@ -97,13 +90,15 @@ namespace cam_lidar_calibration
             capture_button_->setEnabled(true);
             discard_button_->setEnabled(true);
             optimise_button_->setEnabled(true);
-            auto result = action_client_.getResult();
-            auto t = result->transform.translation;
-            auto r = result->transform.rotation;
+            // auto result = action_client_.getResult();
+            // auto t = result->transform.translation;
+            // auto r = result->transform.rotation;
+
             std::ostringstream os;
             os.precision(3);
             //    os << "Rotation - w: " << r.w << " x: " << r.x << " y: " << r.y << " z: " << r.z;
             //    os << "\nTranslation - x: " << t.x << " y: " << t.y << " z: " << t.z;
+
             os << "Finished - csv in cam_lidar_calibration/output";
             output_label_->setText(QString::fromStdString(os.str()));
         }
