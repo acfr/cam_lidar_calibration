@@ -34,7 +34,6 @@
 #include <pcl/filters/radius_outlier_removal.h>
 
 #include <ros/package.h>
-
  
 #include <ctime>
 // For shuffling of generated sets
@@ -150,6 +149,7 @@ namespace cam_lidar_calibration
         switch (req.operation)
         {
             case Optimise::Request::CAPTURE:
+                num_of_pc_frames_ = 0;
                 ROS_INFO("Capturing sample");
                 break;
             case Optimise::Request::CAPTURE_BCKGRND:
@@ -731,8 +731,8 @@ namespace cam_lidar_calibration
         proj.filter(*cloud_projected);
 
         // Publish the projected inliers
-        pc_samples_.push_back(cloud_projected);
-        // publishBoardPointCloud();
+        // pc_samples_.push_back(cloud_projected);
+
         return std::make_tuple(cloud_projected, lidar_normal);
     }
 
@@ -853,6 +853,44 @@ namespace cam_lidar_calibration
         PointCloud::Ptr distoffset_cloud(new PointCloud);
         distoffset_passthrough(pointcloud, distoffset_cloud);
         experimental_region_pub_.publish(distoffset_cloud);
+        
+        PointCloud::Ptr subtracted_pc(new PointCloud);
+        PointCloud::Ptr cloud_filtered(new PointCloud);
+
+        //If the background sample has been taken then perform background subtraction and publish pc
+        if(background_pc_samples_.size() == 1)
+        {
+            // Instantiate octree-based point cloud change detection class
+            pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZIR> octree(bounds_.voxel_res);
+            // Add points from cloudA to octree
+            octree.setInputCloud(background_pc_samples_[0]);
+            octree.addPointsFromInputCloud();
+            // Switch octree buffers: This resets octree but keeps previous tree structure in memory.
+            octree.switchBuffers();
+            // Add points from cloudB to octree
+            octree.setInputCloud(distoffset_cloud);
+            octree.addPointsFromInputCloud();
+        
+            // Get vector of point indices from octree voxels which did not exist in previous buffer
+            std::vector<int> newPointIdxVector;
+            octree.getPointIndicesFromNewVoxels(newPointIdxVector);
+
+            for(std::size_t i = 0; i < newPointIdxVector.size(); ++i)
+            {
+                subtracted_pc->push_back((*distoffset_cloud)[newPointIdxVector[i]]);
+            }
+
+            // Create the filtering object
+            pcl::StatisticalOutlierRemoval<pcl::PointXYZIR> sor;
+            sor.setInputCloud(subtracted_pc);
+            sor.setMeanK(bounds_.k);
+            sor.setStddevMulThresh(bounds_.z);
+            sor.filter(*cloud_filtered);
+
+            // Publish the board point cloud after background subtraction
+            cloud_filtered->header.frame_id = lidar_frame_;
+            subtracted_cloud_pub_.publish(cloud_filtered);
+        }
 
         if (flag == Optimise::Request::CAPTURE_BCKGRND)
         {
@@ -866,7 +904,8 @@ namespace cam_lidar_calibration
 
         if (flag == Optimise::Request::CAPTURE)
         {
-            ROS_INFO("Processing sample");
+            ROS_INFO("Processing...");
+
             auto [corner_vectors, chessboard_normal] = locateChessboard(image);
             if (corner_vectors.size() == 0)
             {
@@ -884,45 +923,6 @@ namespace cam_lidar_calibration
             sample.camera_corners = corner_vectors;
             sample.camera_normal = cv::Point3d(chessboard_normal);
             sample.pixeltometre = metreperpixel_cbdiag;
-
-            // Instantiate octree-based point cloud change detection class
-            pcl::octree::OctreePointCloudChangeDetector<pcl::PointXYZIR> octree(bounds_.voxel_res);
-
-            // Add points from cloudA to octree
-            octree.setInputCloud(background_pc_samples_[0]);
-            octree.addPointsFromInputCloud();
-        
-            // Switch octree buffers: This resets octree but keeps previous tree structure in memory.
-            octree.switchBuffers();
-
-            // Add points from cloudB to octree
-            octree.setInputCloud(distoffset_cloud);
-            octree.addPointsFromInputCloud();
-        
-            std::vector<int> newPointIdxVector;
-        
-            // Get vector of point indices from octree voxels which did not exist in previous buffer
-            octree.getPointIndicesFromNewVoxels(newPointIdxVector);
-
-            PointCloud::Ptr subtracted_pc(new PointCloud);
-
-            for(std::size_t i = 0; i < newPointIdxVector.size(); ++i)
-            {
-                subtracted_pc->push_back((*distoffset_cloud)[newPointIdxVector[i]]);
-            }
-
-            PointCloud::Ptr cloud_filtered(new PointCloud);
-
-            // Create the filtering object
-            pcl::StatisticalOutlierRemoval<pcl::PointXYZIR> sor;
-            sor.setInputCloud(subtracted_pc);
-            sor.setMeanK(bounds_.k);
-            sor.setStddevMulThresh(bounds_.z);
-            sor.filter(*cloud_filtered);
-
-            // Publish the board point cloud after background subtraction
-            cloud_filtered->header.frame_id = lidar_frame_;
-            subtracted_cloud_pub_.publish(cloud_filtered);
 
             // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
             auto [cloud_projected, lidar_normal] = extractBoard(cloud_filtered, sample);
@@ -968,8 +968,6 @@ namespace cam_lidar_calibration
             if (top_left.values.empty() | top_right.values.empty()
             | bottom_left.values.empty() | bottom_right.values.empty()) {
                 ROS_ERROR("RANSAC unsuccessful, discarding sample - Need more lidar points on board");
-                pc_samples_.pop_back();
-                num_samples--;
                 flag = Optimise::Request::READY;
                 ROS_INFO("Ready for capture\n");
                 return;
@@ -1039,8 +1037,13 @@ namespace cam_lidar_calibration
             double h1 = lengths[3];
 
             // If it is the first sample get the dimensions of the board
-            if(pc_samples_.size() == 1)
+            if(pc_samples_.size() == 0)
             {
+                sample.widths.push_back(w0);
+                sample.widths.push_back(w1);
+                sample.heights.push_back(h0);
+                sample.heights.push_back(h1);
+                
                 board_height_ = (h0+h1)/2;
                 board_width_ = (w0+w1)/2;
 
@@ -1083,14 +1086,14 @@ namespace cam_lidar_calibration
                     abs(h1 - board_height_) > board_height_ * 0.1) 
                 {
                     ROS_ERROR("Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try capturing again");
-                    pc_samples_.pop_back();
-                    num_samples--;
                     flag = Optimise::Request::READY;
                     ROS_INFO("Ready for capture\n");
                     return;
                 }
 
                 ROS_INFO("Found line coefficients and outlined chessboard");
+
+                pc_samples_.push_back(cloud_projected);
                 publishBoardPointCloud();
 
                 cv_bridge::CvImagePtr cv_ptr;

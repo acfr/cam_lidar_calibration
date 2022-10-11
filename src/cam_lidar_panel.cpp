@@ -64,7 +64,15 @@ namespace cam_lidar_calibration
     {
         Optimise srv;
         srv.request.operation = Optimise::Request::CAPTURE;
-        optimise_client_.call(srv);
+
+
+        while(!optimise_client_.call(srv))
+        {
+            capture_button_->setEnabled(false);
+        }
+
+        // optimise_client_.call(srv);
+
         discard_button_->setEnabled(true);
         optimise_button_->setEnabled(true);
     }

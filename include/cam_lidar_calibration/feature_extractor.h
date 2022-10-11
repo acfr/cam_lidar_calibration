@@ -109,6 +109,11 @@ namespace cam_lidar_calibration
 
         std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> background_pc_samples_;
         float board_width_, board_height_;
+
+        int num_of_pc_frames_;
+        int frames_to_capture_ = 5;
+
+        std::vector<cam_lidar_calibration::OptimisationSample> samples_;
     };
 
 }  // namespace cam_lidar_calibration
