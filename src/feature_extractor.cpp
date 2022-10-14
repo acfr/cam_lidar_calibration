@@ -153,6 +153,7 @@ namespace cam_lidar_calibration
                 ROS_INFO("Capturing sample");
                 break;
             case Optimise::Request::CAPTURE_BCKGRND:
+                background_pc_samples_.clear();
                 ROS_INFO("Capturing background pointcloud");
                 break;                           
             case Optimise::Request::DISCARD:
@@ -730,9 +731,6 @@ namespace cam_lidar_calibration
         proj.setModelCoefficients(coefficients);
         proj.filter(*cloud_projected);
 
-        // Publish the projected inliers
-        // pc_samples_.push_back(cloud_projected);
-
         return std::make_tuple(cloud_projected, lidar_normal);
     }
 
@@ -853,7 +851,16 @@ namespace cam_lidar_calibration
         PointCloud::Ptr distoffset_cloud(new PointCloud);
         distoffset_passthrough(pointcloud, distoffset_cloud);
         experimental_region_pub_.publish(distoffset_cloud);
-        
+
+        if (flag == Optimise::Request::CAPTURE_BCKGRND)
+        {
+            background_pc_samples_.push_back(distoffset_cloud);
+            flag = Optimise::Request::READY;  // Reset the capture flag
+            num_of_pc_frames_ = 0;
+            ROS_INFO("Ready to capture sample");
+            return;
+        }
+
         PointCloud::Ptr subtracted_pc(new PointCloud);
         PointCloud::Ptr cloud_filtered(new PointCloud);
 
@@ -892,264 +899,271 @@ namespace cam_lidar_calibration
             subtracted_cloud_pub_.publish(cloud_filtered);
         }
 
-        if (flag == Optimise::Request::CAPTURE_BCKGRND)
-        {
-            background_pc_samples_.clear();
-            background_pc_samples_.push_back(distoffset_cloud);
-            flag = Optimise::Request::READY;  // Reset the capture flag
-            ROS_INFO("Ready to capture board sample.");
-            ROS_INFO("Position board in scene and press Get Board Dimensions\n");
-            return;
-        }
-
         if (flag == Optimise::Request::CAPTURE)
         {
             ROS_INFO("Processing...");
 
-            auto [corner_vectors, chessboard_normal] = locateChessboard(image);
-            if (corner_vectors.size() == 0)
+            if(num_of_pc_frames_ == frames_to_capture_)
             {
-                flag = Optimise::Request::READY;
-                ROS_ERROR("Sample capture failed: can't detect chessboard in camera image");
+                // Check if there are 5 successfull frames captured
+                // If not return and set flag to ready
+                // ..
+                // Do the averaging
+                // ...
+                //Send the sample to Optimiser class instance 
+                // Push this sample to the optimiser
+                optimiser_->samples.push_back(sample);
+                // ...
+                //
+
+                flag = Optimise::Request::READY;  
+                num_of_pc_frames_ = 0;
                 ROS_INFO("Ready to capture sample");
                 return;
             }
-
-            cam_lidar_calibration::OptimisationSample sample;
-            num_samples++;
-            sample.sample_num = num_samples;
-            sample.camera_centre = corner_vectors[4];  // Centre of board
-            corner_vectors.pop_back();
-            sample.camera_corners = corner_vectors;
-            sample.camera_normal = cv::Point3d(chessboard_normal);
-            sample.pixeltometre = metreperpixel_cbdiag;
-
-            // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
-            auto [cloud_projected, lidar_normal] = extractBoard(cloud_filtered, sample);
-            if (cloud_projected->points.size() == 0)
+            else 
             {
-                flag = Optimise::Request::READY;
-                ROS_INFO("Ready for capture\n");
-                return;
-            }
-            sample.lidar_normal = lidar_normal;
-
-            // First: Sort out the points in the point cloud according to their ring numbers
-            std::vector<PointCloud> ring_pointclouds(i_params.lidar_ring_count);
-
-            for (const auto& point : cloud_projected->points)
-            {
-                ring_pointclouds[point.ring].push_back(point);
-            }
-
-            // Second: Arrange points in every ring in descending order of y coordinate
-            for (auto& ring : ring_pointclouds)
-            {
-                std::sort(ring.begin(), ring.end(), [](pcl::PointXYZIR p1, pcl::PointXYZIR p2) { return p1.y > p2.y; });
-            }
-
-            // Third: Find minimum and maximum points in a ring
-            PointCloud::Ptr max_points(new PointCloud);
-            PointCloud::Ptr min_points(new PointCloud);
-            for (const auto& ring : ring_pointclouds)
-            {
-                if (ring.size() == 0)
+                auto [corner_vectors, chessboard_normal] = locateChessboard(image);
+                if (corner_vectors.size() == 0)
                 {
-                    continue;
+                    flag = Optimise::Request::READY;
+                    ROS_ERROR("Sample capture failed: can't detect chessboard in camera image");
+                    ROS_INFO("Ready to capture sample");
+                    return;
                 }
-                min_points->push_back(ring[ring.size() - 1]);
-                max_points->push_back(ring[0]);
-            }
 
-            // Fit lines through minimum and maximum points
-            auto [top_left, bottom_left] = findEdges(max_points);
-            auto [top_right, bottom_right] = findEdges(min_points);
+                cam_lidar_calibration::OptimisationSample sample;
+                num_samples++;
+                sample.sample_num = num_samples;
+                sample.camera_centre = corner_vectors[4];  // Centre of board
+                corner_vectors.pop_back();
+                sample.camera_corners = corner_vectors;
+                sample.camera_normal = cv::Point3d(chessboard_normal);
+                sample.pixeltometre = metreperpixel_cbdiag;
 
-            if (top_left.values.empty() | top_right.values.empty()
-            | bottom_left.values.empty() | bottom_right.values.empty()) {
-                ROS_ERROR("RANSAC unsuccessful, discarding sample - Need more lidar points on board");
-                flag = Optimise::Request::READY;
-                ROS_INFO("Ready for capture\n");
-                return;
-            }
-
-            // Get angles of targetboard
-            cv::Mat top_left_vector = (cv::Mat_<double>(3,1) << top_left.values[3], top_left.values[4], top_left.values[5]);
-            cv::Mat top_right_vector = (cv::Mat_<double>(3,1) << top_right.values[3], top_right.values[4], top_right.values[5]);
-            cv::Mat bottom_left_vector = (cv::Mat_<double>(3,1) << bottom_left.values[3], bottom_left.values[4], bottom_left.values[5]);
-            cv::Mat bottom_right_vector = (cv::Mat_<double>(3,1) << bottom_right.values[3], bottom_right.values[4], bottom_right.values[5]);
-            double a0 = acos(top_left_vector.dot(top_right_vector))*180/M_PI;
-            double a1 = acos(bottom_left_vector.dot(bottom_right_vector))*180/M_PI;
-            double a2 = acos(top_left_vector.dot(bottom_left_vector))*180/M_PI;
-            double a3 = acos(top_right_vector.dot(bottom_right_vector))*180/M_PI;
-            sample.angles_0.push_back(a0);
-            sample.angles_0.push_back(a1);
-            sample.angles_1.push_back(a2);
-            sample.angles_1.push_back(a3);
-
-            // Find the corners
-            // 3D Lines rarely intersect - lineWithLineIntersection has default threshold of 1e-4
-            Eigen::Vector4f corner;
-            pcl::lineWithLineIntersection(top_left, top_right, corner);
-            cv::Point3d c0(corner[0], corner[1], corner[2]);
-            pcl::lineWithLineIntersection(bottom_left, bottom_right, corner);
-            cv::Point3d c1(corner[0], corner[1], corner[2]);
-            pcl::lineWithLineIntersection(top_left, bottom_left, corner);
-            cv::Point3d c2(corner[0], corner[1], corner[2]);
-            pcl::lineWithLineIntersection(top_right, bottom_right, corner);
-            cv::Point3d c3(corner[0], corner[1], corner[2]);
-            // Add points in same order as the paper
-            // Convert to mm
-            sample.lidar_corners.push_back(c3 * 1000);
-            sample.lidar_corners.push_back(c0 * 1000);
-            sample.lidar_corners.push_back(c2 * 1000);
-            sample.lidar_corners.push_back(c1 * 1000);
-
-            for (const auto& p : sample.lidar_corners)
-            {
-                // Average the corners
-                sample.lidar_centre.x += p.x / 4.0;
-                sample.lidar_centre.y += p.y / 4.0;
-                sample.lidar_centre.z += p.z / 4.0;
-            }
-
-            // Flip the lidar normal if it is in the wrong direction (mainly happens for rear facing cameras)
-            double top_down_radius = sqrt(pow(sample.lidar_centre.x,2)+pow(sample.lidar_centre.y,2));
-            double vector_dist = sqrt(pow(sample.lidar_centre.x + sample.lidar_normal.x,2) +
-                                      pow(sample.lidar_centre.y + sample.lidar_normal.y,2));
-
-            if (vector_dist > top_down_radius) {
-            	sample.lidar_normal.x = -sample.lidar_normal.x;
-            	sample.lidar_normal.y = -sample.lidar_normal.y;
-            	sample.lidar_normal.z = -sample.lidar_normal.z;
-            }
-
-            // Get line lengths for comparison with real board dimensions
-            std::vector <double> lengths;
-            lengths.push_back(sqrt(pow(c0.x - c3.x, 2) + pow(c0.y - c3.y, 2) + pow(c0.z - c3.z, 2)) * 1000);
-            lengths.push_back(sqrt(pow(c0.x - c2.x, 2) + pow(c0.y - c2.y, 2) + pow(c0.z - c2.z, 2)) * 1000);
-            lengths.push_back(sqrt(pow(c1.x - c3.x, 2) + pow(c1.y - c3.y, 2) + pow(c1.z - c3.z, 2)) * 1000);
-            lengths.push_back(sqrt(pow(c1.x - c2.x, 2) + pow(c1.y - c2.y, 2) + pow(c1.z - c2.z, 2)) * 1000);
-            std::sort(lengths.begin(), lengths.end());
-            double w0 = lengths[0];
-            double w1 = lengths[1];
-            double h0 = lengths[2];
-            double h1 = lengths[3];
-
-            // If it is the first sample get the dimensions of the board
-            if(pc_samples_.size() == 0)
-            {
-                sample.widths.push_back(w0);
-                sample.widths.push_back(w1);
-                sample.heights.push_back(h0);
-                sample.heights.push_back(h1);
-                
-                board_height_ = (h0+h1)/2;
-                board_width_ = (w0+w1)/2;
-
-                printf("Board height = %6.2fmm \n", board_height_);
-                printf("Board width  = %6.2fmm \n", board_width_);
-            }
-            else // For every other sample get the dimensions and compare to the first one
-            {
-                sample.widths.push_back(w0);
-                sample.widths.push_back(w1);
-                sample.heights.push_back(h0);
-                sample.heights.push_back(h1);
-
-                double gt_area = (double)board_width_/1000*(double)board_height_/1000;
-                double b_area = (w0/1000*h0/1000)/2 + (w1/1000*h1/1000)/2;
-
-                // Board dimension errors
-                double w0_diff = abs(w0 - board_width_);
-                double w1_diff = abs(w1 - board_width_);
-                double h0_diff = abs(h0 - board_height_);
-                double h1_diff = abs(h1 - board_height_);
-                double be_dim_err = w0_diff + w1_diff + h0_diff + h1_diff;
-
-                double distance = sqrt(pow(sample.lidar_centre.x/1000-0, 2) + pow(sample.lidar_centre.y/1000-0, 2) + pow(sample.lidar_centre.z/1000-0, 2));
-                sample.distance_from_origin = distance;
-                printf("\n--- Sample %d ---\n", num_samples);
-                printf("Measured board has: dimensions = %6.5f x %6.5f mm; area = %6.5f m^2\n", board_width_, board_height_, gt_area);
-                printf("Distance = %5.2f m\n", sample.distance_from_origin);
-                printf("Board angles     = %5.2f,%5.2f,%5.2f,%5.2f degrees\n",a0, a1, a2, a3);
-                printf("Board area       = %7.5f m^2 (%+4.5f m^2)\n", b_area, b_area-gt_area);
-                printf("Board avg height = %6.2fmm (%+4.2fmm)\n", (h0+h1)/2, (h0+h1)/2-board_height_);
-                printf("Board avg width  = %6.2fmm (%+4.2fmm)\n", (w0+w1)/2, (w0+w1)/2-board_width_);
-                printf("Board dim        = %6.2f,%6.2f,%6.2f,%6.2f mm\n", w0, h0, h1, w1);
-                printf("Board dim error  = %7.2f\n\n", be_dim_err);
-
-                // If the lidar board dim is more than 10% of the measured, then reject sample
-                if (abs(w0-board_width_) > board_width_*0.1 |
-                    abs(w1 - board_width_) > board_width_ * 0.1 |
-                    abs(h0 - board_height_) > board_height_ * 0.1 |
-                    abs(h1 - board_height_) > board_height_ * 0.1) 
+                // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
+                auto [cloud_projected, lidar_normal] = extractBoard(cloud_filtered, sample);
+                if (cloud_projected->points.size() == 0)
                 {
-                    ROS_ERROR("Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try capturing again");
+                    //flag = Optimise::Request::READY;
+                    ROS_INFO("Ready for capture\n");
+                    return;
+                }
+                sample.lidar_normal = lidar_normal;
+
+                // First: Sort out the points in the point cloud according to their ring numbers
+                std::vector<PointCloud> ring_pointclouds(i_params.lidar_ring_count);
+
+                for (const auto& point : cloud_projected->points)
+                {
+                    ring_pointclouds[point.ring].push_back(point);
+                }
+
+                // Second: Arrange points in every ring in descending order of y coordinate
+                for (auto& ring : ring_pointclouds)
+                {
+                    std::sort(ring.begin(), ring.end(), [](pcl::PointXYZIR p1, pcl::PointXYZIR p2) { return p1.y > p2.y; });
+                }
+
+                // Third: Find minimum and maximum points in a ring
+                PointCloud::Ptr max_points(new PointCloud);
+                PointCloud::Ptr min_points(new PointCloud);
+                for (const auto& ring : ring_pointclouds)
+                {
+                    if (ring.size() == 0)
+                    {
+                        continue;
+                    }
+                    min_points->push_back(ring[ring.size() - 1]);
+                    max_points->push_back(ring[0]);
+                }
+
+                // Fit lines through minimum and maximum points
+                auto [top_left, bottom_left] = findEdges(max_points);
+                auto [top_right, bottom_right] = findEdges(min_points);
+
+                if (top_left.values.empty() | top_right.values.empty()
+                | bottom_left.values.empty() | bottom_right.values.empty()) {
+                    ROS_ERROR("RANSAC unsuccessful, discarding sample - Need more lidar points on board");
                     flag = Optimise::Request::READY;
                     ROS_INFO("Ready for capture\n");
                     return;
                 }
 
-                ROS_INFO("Found line coefficients and outlined chessboard");
+                // Get angles of targetboard
+                cv::Mat top_left_vector = (cv::Mat_<double>(3,1) << top_left.values[3], top_left.values[4], top_left.values[5]);
+                cv::Mat top_right_vector = (cv::Mat_<double>(3,1) << top_right.values[3], top_right.values[4], top_right.values[5]);
+                cv::Mat bottom_left_vector = (cv::Mat_<double>(3,1) << bottom_left.values[3], bottom_left.values[4], bottom_left.values[5]);
+                cv::Mat bottom_right_vector = (cv::Mat_<double>(3,1) << bottom_right.values[3], bottom_right.values[4], bottom_right.values[5]);
+                double a0 = acos(top_left_vector.dot(top_right_vector))*180/M_PI;
+                double a1 = acos(bottom_left_vector.dot(bottom_right_vector))*180/M_PI;
+                double a2 = acos(top_left_vector.dot(bottom_left_vector))*180/M_PI;
+                double a3 = acos(top_right_vector.dot(bottom_right_vector))*180/M_PI;
+                sample.angles_0.push_back(a0);
+                sample.angles_0.push_back(a1);
+                sample.angles_1.push_back(a2);
+                sample.angles_1.push_back(a3);
 
-                pc_samples_.push_back(cloud_projected);
-                publishBoardPointCloud();
+                // Find the corners
+                // 3D Lines rarely intersect - lineWithLineIntersection has default threshold of 1e-4
+                Eigen::Vector4f corner;
+                pcl::lineWithLineIntersection(top_left, top_right, corner);
+                cv::Point3d c0(corner[0], corner[1], corner[2]);
+                pcl::lineWithLineIntersection(bottom_left, bottom_right, corner);
+                cv::Point3d c1(corner[0], corner[1], corner[2]);
+                pcl::lineWithLineIntersection(top_left, bottom_left, corner);
+                cv::Point3d c2(corner[0], corner[1], corner[2]);
+                pcl::lineWithLineIntersection(top_right, bottom_right, corner);
+                cv::Point3d c3(corner[0], corner[1], corner[2]);
+                // Add points in same order as the paper
+                // Convert to mm
+                sample.lidar_corners.push_back(c3 * 1000);
+                sample.lidar_corners.push_back(c0 * 1000);
+                sample.lidar_corners.push_back(c2 * 1000);
+                sample.lidar_corners.push_back(c1 * 1000);
 
-                cv_bridge::CvImagePtr cv_ptr;
-                cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
-
-                // Save image 
-                if(boost::filesystem::create_directory(newdatafolder))
-                {   
-                    boost::filesystem::create_directory(newdatafolder + "/images");
-                    boost::filesystem::create_directory(newdatafolder + "/pcd");
-                    ROS_INFO_STREAM("Save data folder created at " << newdatafolder);
-                } 
-                std::string img_filepath = newdatafolder + "/images/pose" + std::to_string(num_samples)  + ".png" ;              
-                std::string target_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_target.pcd" ;              
-                std::string full_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_full.pcd" ;              
-                
-                ROS_ASSERT( cv::imwrite( img_filepath,  cv_ptr->image ) );   
-                pcl::io::savePCDFileASCII (target_pcd_filepath, *subtracted_pc);
-                pcl::io::savePCDFileASCII (full_pcd_filepath, *pointcloud);
-                ROS_INFO_STREAM("Image and pcd file saved");
-
-                if (num_samples == 1)
+                for (const auto& p : sample.lidar_corners)
                 {
-                    // Check if save_dir has camera_info topic saved
-                    std::string pkg_path = ros::package::getPath("cam_lidar_calibration");
-
-                    std::ofstream camera_info_file;
-                    std::string camera_info_path = pkg_path + "/cfg/camera_info.yaml";
-                    ROS_INFO_STREAM("Camera_info saved at: " << camera_info_path);
-                    camera_info_file.open(camera_info_path, std::ios_base::out | std::ios_base::trunc);
-                    std::string dist_model = (i_params.fisheye_model) ? "fisheye": "non-fisheye";
-                    camera_info_file << "distortion_model: \"" << dist_model << "\"\n";
-                    camera_info_file << "width: " << i_params.image_size.first << "\n";
-                    camera_info_file << "height: " << i_params.image_size.second << "\n";
-                    camera_info_file << "D: [" << i_params.distcoeff.at<double>(0)
-                                            << "," << i_params.distcoeff.at<double>(1)
-                                            << "," << i_params.distcoeff.at<double>(2)
-                                            << "," << i_params.distcoeff.at<double>(3) << "]\n";
-                    camera_info_file << "K: [" << i_params.cameramat.at<double>(0,0)
-                                            << ",0.0"
-                                            << "," << i_params.cameramat.at<double>(0,2)
-                                            << ",0.0"
-                                            << "," << i_params.cameramat.at<double>(1,1)
-                                            << "," << i_params.cameramat.at<double>(1,2)
-                                            << ",0.0,0.0" 
-                                            << "," << i_params.cameramat.at<double>(2, 2) 
-                                            << "]\n";
-                    camera_info_file.close();
+                    // Average the corners
+                    sample.lidar_centre.x += p.x / 4.0;
+                    sample.lidar_centre.y += p.y / 4.0;
+                    sample.lidar_centre.z += p.z / 4.0;
                 }
 
-                // Push this sample to the optimiser
-                optimiser_->samples.push_back(sample);
-            }
+                // Flip the lidar normal if it is in the wrong direction (mainly happens for rear facing cameras)
+                double top_down_radius = sqrt(pow(sample.lidar_centre.x,2)+pow(sample.lidar_centre.y,2));
+                double vector_dist = sqrt(pow(sample.lidar_centre.x + sample.lidar_normal.x,2) +
+                                        pow(sample.lidar_centre.y + sample.lidar_normal.y,2));
 
-            flag = Optimise::Request::READY;  // Reset the capture flag
-            ROS_INFO("Ready for capture\n");
+                if (vector_dist > top_down_radius) {
+                    sample.lidar_normal.x = -sample.lidar_normal.x;
+                    sample.lidar_normal.y = -sample.lidar_normal.y;
+                    sample.lidar_normal.z = -sample.lidar_normal.z;
+                }
+
+                // Get line lengths for comparison with real board dimensions
+                std::vector <double> lengths;
+                lengths.push_back(sqrt(pow(c0.x - c3.x, 2) + pow(c0.y - c3.y, 2) + pow(c0.z - c3.z, 2)) * 1000);
+                lengths.push_back(sqrt(pow(c0.x - c2.x, 2) + pow(c0.y - c2.y, 2) + pow(c0.z - c2.z, 2)) * 1000);
+                lengths.push_back(sqrt(pow(c1.x - c3.x, 2) + pow(c1.y - c3.y, 2) + pow(c1.z - c3.z, 2)) * 1000);
+                lengths.push_back(sqrt(pow(c1.x - c2.x, 2) + pow(c1.y - c2.y, 2) + pow(c1.z - c2.z, 2)) * 1000);
+                std::sort(lengths.begin(), lengths.end());
+                double w0 = lengths[0];
+                double w1 = lengths[1];
+                double h0 = lengths[2];
+                double h1 = lengths[3];
+
+                // If it is the first sample get the dimensions of the board
+                if(pc_samples_.size() == 0)
+                {
+                    sample.widths.push_back(w0);
+                    sample.widths.push_back(w1);
+                    sample.heights.push_back(h0);
+                    sample.heights.push_back(h1);
+                    
+                    board_height_ = (h0+h1)/2;
+                    board_width_ = (w0+w1)/2;
+
+                    printf("Board height = %6.2fmm \n", board_height_);
+                    printf("Board width  = %6.2fmm \n", board_width_);
+                }
+                else // For every other sample get the dimensions and compare to the first one
+                {
+                    sample.widths.push_back(w0);
+                    sample.widths.push_back(w1);
+                    sample.heights.push_back(h0);
+                    sample.heights.push_back(h1);
+
+                    double gt_area = (double)board_width_/1000*(double)board_height_/1000;
+                    double b_area = (w0/1000*h0/1000)/2 + (w1/1000*h1/1000)/2;
+
+                    // Board dimension errors
+                    double w0_diff = abs(w0 - board_width_);
+                    double w1_diff = abs(w1 - board_width_);
+                    double h0_diff = abs(h0 - board_height_);
+                    double h1_diff = abs(h1 - board_height_);
+                    double be_dim_err = w0_diff + w1_diff + h0_diff + h1_diff;
+
+                    double distance = sqrt(pow(sample.lidar_centre.x/1000-0, 2) + pow(sample.lidar_centre.y/1000-0, 2) + pow(sample.lidar_centre.z/1000-0, 2));
+                    sample.distance_from_origin = distance;
+                    printf("\n--- Sample %d ---\n", num_samples);
+                    printf("Measured board has: dimensions = %6.5f x %6.5f mm; area = %6.5f m^2\n", board_width_, board_height_, gt_area);
+                    printf("Distance = %5.2f m\n", sample.distance_from_origin);
+                    printf("Board angles     = %5.2f,%5.2f,%5.2f,%5.2f degrees\n",a0, a1, a2, a3);
+                    printf("Board area       = %7.5f m^2 (%+4.5f m^2)\n", b_area, b_area-gt_area);
+                    printf("Board avg height = %6.2fmm (%+4.2fmm)\n", (h0+h1)/2, (h0+h1)/2-board_height_);
+                    printf("Board avg width  = %6.2fmm (%+4.2fmm)\n", (w0+w1)/2, (w0+w1)/2-board_width_);
+                    printf("Board dim        = %6.2f,%6.2f,%6.2f,%6.2f mm\n", w0, h0, h1, w1);
+                    printf("Board dim error  = %7.2f\n\n", be_dim_err);
+
+                    // If the lidar board dim is more than 10% of the measured, then reject sample
+                    if (abs(w0-board_width_) > board_width_*0.1 |
+                        abs(w1 - board_width_) > board_width_ * 0.1 |
+                        abs(h0 - board_height_) > board_height_ * 0.1 |
+                        abs(h1 - board_height_) > board_height_ * 0.1) 
+                    {
+                        ROS_ERROR("Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try capturing again");
+                        flag = Optimise::Request::READY;
+                        ROS_INFO("Ready for capture\n");
+                        return;
+                    }
+
+                    ROS_INFO("Found line coefficients and outlined chessboard");
+
+                    // pc_samples_.push_back(cloud_projected);
+                    // publishBoardPointCloud();
+
+                    cv_bridge::CvImagePtr cv_ptr;
+                    cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
+
+                    // Save image 
+                    if(boost::filesystem::create_directory(newdatafolder))
+                    {   
+                        boost::filesystem::create_directory(newdatafolder + "/images");
+                        boost::filesystem::create_directory(newdatafolder + "/pcd");
+                        ROS_INFO_STREAM("Save data folder created at " << newdatafolder);
+                    } 
+                    std::string img_filepath = newdatafolder + "/images/pose" + std::to_string(num_samples)  + ".png" ;              
+                    std::string target_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_target.pcd" ;              
+                    std::string full_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples)  + "_full.pcd" ;              
+                    
+                    ROS_ASSERT( cv::imwrite( img_filepath,  cv_ptr->image ) );   
+                    pcl::io::savePCDFileASCII (target_pcd_filepath, *subtracted_pc);
+                    pcl::io::savePCDFileASCII (full_pcd_filepath, *pointcloud);
+                    ROS_INFO_STREAM("Image and pcd file saved");
+
+                    if (num_samples == 1)
+                    {
+                        // Check if save_dir has camera_info topic saved
+                        std::string pkg_path = ros::package::getPath("cam_lidar_calibration");
+
+                        std::ofstream camera_info_file;
+                        std::string camera_info_path = pkg_path + "/cfg/camera_info.yaml";
+                        ROS_INFO_STREAM("Camera_info saved at: " << camera_info_path);
+                        camera_info_file.open(camera_info_path, std::ios_base::out | std::ios_base::trunc);
+                        std::string dist_model = (i_params.fisheye_model) ? "fisheye": "non-fisheye";
+                        camera_info_file << "distortion_model: \"" << dist_model << "\"\n";
+                        camera_info_file << "width: " << i_params.image_size.first << "\n";
+                        camera_info_file << "height: " << i_params.image_size.second << "\n";
+                        camera_info_file << "D: [" << i_params.distcoeff.at<double>(0)
+                                                << "," << i_params.distcoeff.at<double>(1)
+                                                << "," << i_params.distcoeff.at<double>(2)
+                                                << "," << i_params.distcoeff.at<double>(3) << "]\n";
+                        camera_info_file << "K: [" << i_params.cameramat.at<double>(0,0)
+                                                << ",0.0"
+                                                << "," << i_params.cameramat.at<double>(0,2)
+                                                << ",0.0"
+                                                << "," << i_params.cameramat.at<double>(1,1)
+                                                << "," << i_params.cameramat.at<double>(1,2)
+                                                << ",0.0,0.0" 
+                                                << "," << i_params.cameramat.at<double>(2, 2) 
+                                                << "]\n";
+                        camera_info_file.close();
+                    }
+
+                    num_of_pc_frames_++;// increment the counter
+                }
+            }
         }  // if (flag == Optimise::Request::CAPTURE)
     }  // End of extractRegionOfInterest
 

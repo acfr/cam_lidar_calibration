@@ -113,6 +113,8 @@ namespace cam_lidar_calibration
         int num_of_pc_frames_;
         int frames_to_capture_ = 5;
 
+        //five consecutive frames are captured per caputre button press 
+        std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> pc_samples_set_;
         std::vector<cam_lidar_calibration::OptimisationSample> samples_;
     };
 
