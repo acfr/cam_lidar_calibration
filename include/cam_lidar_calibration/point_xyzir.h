@@ -3,10 +3,8 @@
 #define PCL_NO_PRECOMPILE
 #include <pcl/point_types.h>
 
-namespace pcl
-{
-struct PointXYZIR
-{
+namespace pcl {
+struct PointXYZIR {
   PCL_ADD_POINT4D;
   float intensity;
   uint8_t ring;
@@ -14,7 +12,9 @@ struct PointXYZIR
 } EIGEN_ALIGN16;
 }  // namespace pcl
 
-POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZIR, (float, x, x)(float, y, y)(float, z, z)(float, intensity,
-                                                                                      intensity)(uint8_t, ring, ring))
+POINT_CLOUD_REGISTER_POINT_STRUCT(
+    PointXYZIR,
+    (float, x, x)(float, y, y)(float, z, z)(float, intensity,
+                                            intensity)(uint8_t, ring, ring))
 
 #endif

@@ -21,6 +21,7 @@ find_package(catkin REQUIRED COMPONENTS
   rviz
   sensor_msgs
   std_msgs
+  roslint
   )
 
 find_package(OpenCV REQUIRED)

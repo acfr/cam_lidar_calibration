@@ -1,10 +1,11 @@
-// Press 'i' to take a sample, Press 'o' to start optimization, Press 'e' to terminate node
-#include "ros/ros.h"
-#include "std_msgs/Int8.h"
+// Press 'i' to take a sample, Press 'o' to start optimization, Press 'e' to
+// terminate node
 #include <termios.h>
 
-int getch()
-{
+#include "ros/ros.h"
+#include "std_msgs/Int8.h"
+
+int getch() {
   static struct termios oldt, newt;
   tcgetattr(STDIN_FILENO, &oldt);  // save old settings
   newt = oldt;
@@ -14,16 +15,14 @@ int getch()
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // restore old settings
   return c;
 }
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
   ros::init(argc, argv, "input_sample");
   ros::NodeHandle sample("~");
   ros::Publisher sample_publisher;
   std_msgs::Int8 flag;
   sample_publisher = sample.advertise<std_msgs::Int8>("/flag", 20);
 
-  while (sample_publisher.getNumSubscribers() == 0)
-  {
+  while (sample_publisher.getNumSubscribers() == 0) {
     ROS_ERROR("Waiting for a subscriber ...");
     sleep(2);
   }
@@ -34,8 +33,7 @@ int main(int argc, char** argv)
   std::cout << " 'e' to end the calibration process" << std::endl;
   ros::spinOnce();
 
-  while (ros::ok())
-  {
+  while (ros::ok()) {
     int c = getch();
     if (c == 'i')  // flag to take an input sample
     {
@@ -53,7 +51,8 @@ int main(int argc, char** argv)
       flag.data = 4;
       sample_publisher.publish(flag);
     }
-    if (c == 'e')  // flag to terminate the node; if you do Ctrl+C, press enter after that
+    if (c == 'e')  // flag to terminate the node; if you do Ctrl+C, press enter
+                   // after that
     {
       ros::shutdown();
     }

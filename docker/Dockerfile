@@ -5,6 +5,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Install basic packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
          curl \
+         python3-pip \
          gnupg2 \
          lsb-core \
          libpng16-16 \
