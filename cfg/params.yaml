@@ -1,15 +1,15 @@
 # Topics
 camera_topic: "/image"
-camera_info: "/sekonix_camera/port_a_cam_0/camera_info"
+camera_info: "/sekonix_camera/port_a_cam_1/camera_info"
 lidar_topic: "/os_cloud_node/points"
 
 # Dynamic rqt_reconfigure default bounds
 feature_extraction:
   x_min: 3.0
-  x_max: 10.0
-  y_min: -4.0
-  y_max: 4.0
-  z_min: -5.0
+  x_max: 7.0
+  y_min: -3.0
+  y_max: 3.0
+  z_min: -1.7
   z_max: 0.0
   k: 50
   z: 1

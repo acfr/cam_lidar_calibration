@@ -105,8 +105,7 @@ class FeatureExtractor {
   int num_samples = 0;
 
   std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> pc_samples_;
-  ros::Publisher board_cloud_pub_, subtracted_cloud_pub_,
-      experimental_region_pub_;
+  ros::Publisher board_cloud_pub_, subtracted_cloud_pub_, experimental_region_pub_;
   ros::Publisher samples_pub_;
   image_transport::Publisher image_publisher;
   ros::ServiceServer optimise_service_;
@@ -125,13 +124,14 @@ class FeatureExtractor {
   ros::NodeHandle public_nh;
 
   std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> background_pc_samples_;
-  double board_width_, board_height_;
+  double board_width_ = 0.0f;
+  double board_height_ = 0.0f;
 
   int num_of_pc_frames_;
   int frames_to_capture_ = 5;
+  int num_invalid_samples = 0;
 
   // five consecutive frames are captured per caputre button press
-  std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> pc_samples_set_;
   std::vector<cam_lidar_calibration::OptimisationSample> samples_;
 };
 
