@@ -12,15 +12,16 @@
 #include <QLabel>
 #include <QPushButton>
 
-using ActionClient =
-    actionlib::SimpleActionClient<cam_lidar_calibration::RunOptimiseAction>;
+using ActionClient = actionlib::SimpleActionClient<cam_lidar_calibration::RunOptimiseAction>;
 
-namespace cam_lidar_calibration {
-class CamLidarPanel : public rviz::Panel {
+namespace cam_lidar_calibration
+{
+class CamLidarPanel : public rviz::Panel
+{
   // This class uses Qt slots and is a subclass of QObject, so it needs
   // the Q_OBJECT macro.
   Q_OBJECT
- public:
+public:
   // QWidget subclass constructors usually take a parent widget
   // parameter (which usually defaults to 0).  At the same time,
   // pluginlib::ClassLoader creates instances by calling the default
@@ -28,23 +29,23 @@ class CamLidarPanel : public rviz::Panel {
   // a default of 0 lets the default constructor work and also lets
   // someone using the class for something else to pass in a parent
   // widget as they normally would with Qt.
-  CamLidarPanel(QWidget* parent = 0);
+  CamLidarPanel(QWidget * parent = 0);
 
   // Now we declare overrides of rviz::Panel functions for saving and
   // loading data from the config file.
-  void load(const rviz::Config& config) override;
+  void load(const rviz::Config & config) override;
   void save(rviz::Config config) const override;
 
- public Q_SLOTS:
+public Q_SLOTS:
 
- protected Q_SLOTS:
+protected Q_SLOTS:
   void captureBackgroundPc();
   void captureSample();
   void discardSample();
   void optimise();
   void updateResult();
 
- protected:
+protected:
   // The ROS node handle.
   ros::NodeHandle nh_;
   ros::NodeHandle private_nh_;
@@ -52,11 +53,11 @@ class CamLidarPanel : public rviz::Panel {
   ros::ServiceClient optimise_client_;
   ActionClient action_client_;
 
-  QLabel* output_label_;
-  QPushButton* capture_background_button_;
-  QPushButton* capture_button_;
-  QPushButton* discard_button_;
-  QPushButton* optimise_button_;
+  QLabel * output_label_;
+  QPushButton * capture_background_button_;
+  QPushButton * capture_button_;
+  QPushButton * discard_button_;
+  QPushButton * optimise_button_;
 };
 
 }  // end namespace cam_lidar_calibration

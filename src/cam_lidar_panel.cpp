@@ -7,19 +7,19 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
-namespace cam_lidar_calibration {
-CamLidarPanel::CamLidarPanel(QWidget* parent)
-    : rviz::Panel(parent), action_client_("run_optimise", true) {
-  optimise_client_ =
-      nh_.serviceClient<cam_lidar_calibration::Optimise>("optimiser");
+namespace cam_lidar_calibration
+{
+CamLidarPanel::CamLidarPanel(QWidget * parent)
+: rviz::Panel(parent), action_client_("run_optimise", true)
+{
+  optimise_client_ = nh_.serviceClient<cam_lidar_calibration::Optimise>("optimiser");
   action_client_.waitForServer();
 
-  QVBoxLayout* main_layout = new QVBoxLayout;
-  QHBoxLayout* button_layout = new QHBoxLayout;
+  QVBoxLayout * main_layout = new QVBoxLayout;
+  QHBoxLayout * button_layout = new QHBoxLayout;
 
   capture_background_button_ = new QPushButton("Capture Background");
-  connect(capture_background_button_, SIGNAL(clicked()), this,
-          SLOT(captureBackgroundPc()));
+  connect(capture_background_button_, SIGNAL(clicked()), this, SLOT(captureBackgroundPc()));
 
   capture_button_ = new QPushButton("Capture sample");
   capture_button_->setEnabled(false);
@@ -33,7 +33,7 @@ CamLidarPanel::CamLidarPanel(QWidget* parent)
   optimise_button_->setEnabled(false);
   connect(optimise_button_, SIGNAL(clicked()), this, SLOT(optimise()));
 
-  QTimer* timer = new QTimer;
+  QTimer * timer = new QTimer;
   connect(timer, SIGNAL(timeout()), this, SLOT(updateResult()));
 
   timer->start(500);
@@ -52,7 +52,8 @@ CamLidarPanel::CamLidarPanel(QWidget* parent)
   setLayout(main_layout);
 }
 
-void CamLidarPanel::captureBackgroundPc() {
+void CamLidarPanel::captureBackgroundPc()
+{
   // Send a service request to capture the background pc
   Optimise srv;
   srv.request.operation = Optimise::Request::CAPTURE_BCKGRND;
@@ -60,7 +61,8 @@ void CamLidarPanel::captureBackgroundPc() {
   capture_button_->setEnabled(true);
 }
 
-void CamLidarPanel::captureSample() {
+void CamLidarPanel::captureSample()
+{
   Optimise srv;
   srv.request.operation = Optimise::Request::CAPTURE;
 
@@ -74,21 +76,23 @@ void CamLidarPanel::captureSample() {
   optimise_button_->setEnabled(true);
 }
 
-void CamLidarPanel::discardSample() {
+void CamLidarPanel::discardSample()
+{
   Optimise srv;
   srv.request.operation = Optimise::Request::DISCARD;
   optimise_client_.call(srv);
   optimise_button_->setEnabled(true);
 }
 
-void CamLidarPanel::optimise() {
+void CamLidarPanel::optimise()
+{
   RunOptimiseGoal goal;
   action_client_.sendGoal(goal);
 }
 
-void CamLidarPanel::updateResult() {
-  if (action_client_.getState() ==
-      actionlib::SimpleClientGoalState::SUCCEEDED) {
+void CamLidarPanel::updateResult()
+{
+  if (action_client_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED) {
     capture_button_->setEnabled(true);
     discard_button_->setEnabled(true);
     optimise_button_->setEnabled(true);
@@ -119,14 +123,10 @@ void CamLidarPanel::updateResult() {
 // Save all configuration data from this panel to the given
 // Config object.  It is important here that you call save()
 // on the parent class so the class id and panel name get saved.
-void CamLidarPanel::save(rviz::Config config) const {
-  rviz::Panel::save(config);
-}
+void CamLidarPanel::save(rviz::Config config) const { rviz::Panel::save(config); }
 
 // Load all configuration data for this panel from the given Config object.
-void CamLidarPanel::load(const rviz::Config& config) {
-  rviz::Panel::load(config);
-}
+void CamLidarPanel::load(const rviz::Config & config) { rviz::Panel::load(config); }
 
 }  // end namespace cam_lidar_calibration
 

@@ -5,7 +5,8 @@
 #include "ros/ros.h"
 #include "std_msgs/Int8.h"
 
-int getch() {
+int getch()
+{
   static struct termios oldt, newt;
   tcgetattr(STDIN_FILENO, &oldt);  // save old settings
   newt = oldt;
@@ -15,7 +16,8 @@ int getch() {
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // restore old settings
   return c;
 }
-int main(int argc, char** argv) {
+int main(int argc, char ** argv)
+{
   ros::init(argc, argv, "input_sample");
   ros::NodeHandle sample("~");
   ros::Publisher sample_publisher;

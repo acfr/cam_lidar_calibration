@@ -22,58 +22,58 @@
 #include "cam_lidar_calibration/point_xyzir.h"
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
-typedef message_filters::Subscriber<pcl::PointCloud<pcl::PointXYZIR>>
-    pc_sub_type;
+typedef message_filters::Subscriber<pcl::PointCloud<pcl::PointXYZIR>> pc_sub_type;
 
-namespace cam_lidar_calibration {
-geometry_msgs::Quaternion normalToQuaternion(const cv::Point3d& normal);
+namespace cam_lidar_calibration
+{
+geometry_msgs::Quaternion normalToQuaternion(const cv::Point3d & normal);
 
-class FeatureExtractor {
- public:
+class FeatureExtractor
+{
+public:
   FeatureExtractor();
   ~FeatureExtractor() = default;
 
   void extractRegionOfInterest(
-      const sensor_msgs::Image::ConstPtr& img,
-      const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& pc);
-  bool serviceCB(Optimise::Request& req, Optimise::Response& res);
+    const sensor_msgs::Image::ConstPtr & img,
+    const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr & pc);
+  bool serviceCB(Optimise::Request & req, Optimise::Response & res);
 
   void optimise(
-      const RunOptimiseGoalConstPtr& goal,
-      actionlib::SimpleActionServer<cam_lidar_calibration::RunOptimiseAction>*
-          as);
+    const RunOptimiseGoalConstPtr & goal,
+    actionlib::SimpleActionServer<cam_lidar_calibration::RunOptimiseAction> * as);
 
   void visualiseSamples();
 
-  void boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level);
+  void boundsCB(cam_lidar_calibration::boundsConfig & config, uint32_t level);
 
   bool import_samples;
 
- private:
-  void passthrough(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
-                   pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
+private:
+  void passthrough(
+    const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr & input_pc,
+    pcl::PointCloud<pcl::PointXYZIR>::Ptr & output_pc);
 
   std::tuple<std::vector<cv::Point3d>, cv::Mat> locateChessboard(
-      const sensor_msgs::Image::ConstPtr& image);
+    const sensor_msgs::Image::ConstPtr & image);
 
-  auto chessboardProjection(const std::vector<cv::Point2d>& corners,
-                            const cv_bridge::CvImagePtr& cv_ptr);
+  auto chessboardProjection(
+    const std::vector<cv::Point2d> & corners, const cv_bridge::CvImagePtr & cv_ptr);
 
   void publishBoardPointCloud();
 
   std::tuple<pcl::PointCloud<pcl::PointXYZIR>::Ptr, cv::Point3d>
 
-  extractBoard(const pcl::PointCloud<pcl::PointXYZIR>::Ptr& cloud,
-               OptimisationSample& sample);
+  extractBoard(const pcl::PointCloud<pcl::PointXYZIR>::Ptr & cloud, OptimisationSample & sample);
 
   std::pair<pcl::ModelCoefficients, pcl::ModelCoefficients> findEdges(
-      const pcl::PointCloud<pcl::PointXYZIR>::Ptr& edge_pair_cloud);
+    const pcl::PointCloud<pcl::PointXYZIR>::Ptr & edge_pair_cloud);
 
-  void callback_camerainfo(const sensor_msgs::CameraInfo::ConstPtr& msg);
+  void callback_camerainfo(const sensor_msgs::CameraInfo::ConstPtr & msg);
 
   void distoffset_passthrough(
-      const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
-      pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
+    const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr & input_pc,
+    pcl::PointCloud<pcl::PointXYZIR>::Ptr & output_pc);
 
   std::string getDateTime();
 
@@ -93,13 +93,12 @@ class FeatureExtractor {
   cam_lidar_calibration::boundsConfig bounds_;
 
   typedef message_filters::sync_policies::ApproximateTime<
-      sensor_msgs::Image, pcl::PointCloud<pcl::PointXYZIR>>
-      ImageLidarSyncPolicy;
+    sensor_msgs::Image, pcl::PointCloud<pcl::PointXYZIR>>
+    ImageLidarSyncPolicy;
 
   std::shared_ptr<image_sub_type> image_sub_;
   std::shared_ptr<pc_sub_type> pc_sub_;
-  std::shared_ptr<message_filters::Synchronizer<ImageLidarSyncPolicy>>
-      image_pc_sync_;
+  std::shared_ptr<message_filters::Synchronizer<ImageLidarSyncPolicy>> image_pc_sync_;
   int queue_rate_ = 10;  // This was 5 before but I changed to 10 cause
                          // Robosense to camera A0 has big timestamp misalign
   int num_samples = 0;
@@ -113,9 +112,7 @@ class FeatureExtractor {
 
   boost::shared_ptr<image_transport::ImageTransport> it_;
   boost::shared_ptr<image_transport::ImageTransport> it_p_;
-  boost::shared_ptr<
-      dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>>
-      server;
+  boost::shared_ptr<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>> server;
 
   std::string curdatetime;
   std::string output_path, newdatafolder;

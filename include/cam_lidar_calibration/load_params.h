@@ -5,8 +5,10 @@
 
 #include <opencv2/core/mat.hpp>
 
-namespace cam_lidar_calibration {
-struct initial_parameters_t {
+namespace cam_lidar_calibration
+{
+struct initial_parameters_t
+{
   bool fisheye_model;
   int lidar_ring_count = 0;
   cv::Size chessboard_pattern_size;
@@ -18,7 +20,7 @@ struct initial_parameters_t {
   std::string camera_topic, camera_info, lidar_topic;
 };
 
-void loadParams(const ros::NodeHandle& n, initial_parameters_t& i_params);
+void loadParams(const ros::NodeHandle & n, initial_parameters_t & i_params);
 
 }  // namespace cam_lidar_calibration
 

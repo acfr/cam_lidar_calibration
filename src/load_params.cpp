@@ -1,7 +1,9 @@
 #include "cam_lidar_calibration/load_params.h"
 
-namespace cam_lidar_calibration {
-void loadParams(const ros::NodeHandle& n, initial_parameters_t& i_params) {
+namespace cam_lidar_calibration
+{
+void loadParams(const ros::NodeHandle & n, initial_parameters_t & i_params)
+{
   int cb_w, cb_h, w, h, e_x, e_y;
   n.getParam("camera_topic", i_params.camera_topic);
   n.getParam("camera_info", i_params.camera_info);
