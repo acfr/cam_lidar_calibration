@@ -16,7 +16,7 @@ int getch()
   tcsetattr(STDIN_FILENO, TCSANOW, &oldt);  // restore old settings
   return c;
 }
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "input_sample");
   ros::NodeHandle sample("~");
@@ -24,7 +24,8 @@ int main(int argc, char ** argv)
   std_msgs::Int8 flag;
   sample_publisher = sample.advertise<std_msgs::Int8>("/flag", 20);
 
-  while (sample_publisher.getNumSubscribers() == 0) {
+  while (sample_publisher.getNumSubscribers() == 0)
+  {
     ROS_ERROR("Waiting for a subscriber ...");
     sleep(2);
   }
@@ -35,7 +36,8 @@ int main(int argc, char ** argv)
   std::cout << " 'e' to end the calibration process" << std::endl;
   ros::spinOnce();
 
-  while (ros::ok()) {
+  while (ros::ok())
+  {
     int c = getch();
     if (c == 'i')  // flag to take an input sample
     {

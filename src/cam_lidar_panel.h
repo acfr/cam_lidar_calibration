@@ -29,11 +29,11 @@ public:
   // a default of 0 lets the default constructor work and also lets
   // someone using the class for something else to pass in a parent
   // widget as they normally would with Qt.
-  CamLidarPanel(QWidget * parent = 0);
+  CamLidarPanel(QWidget* parent = 0);
 
   // Now we declare overrides of rviz::Panel functions for saving and
   // loading data from the config file.
-  void load(const rviz::Config & config) override;
+  void load(const rviz::Config& config) override;
   void save(rviz::Config config) const override;
 
 public Q_SLOTS:
@@ -53,11 +53,11 @@ protected:
   ros::ServiceClient optimise_client_;
   ActionClient action_client_;
 
-  QLabel * output_label_;
-  QPushButton * capture_background_button_;
-  QPushButton * capture_button_;
-  QPushButton * discard_button_;
-  QPushButton * optimise_button_;
+  QLabel* output_label_;
+  QPushButton* capture_background_button_;
+  QPushButton* capture_button_;
+  QPushButton* discard_button_;
+  QPushButton* optimise_button_;
 };
 
 }  // end namespace cam_lidar_calibration

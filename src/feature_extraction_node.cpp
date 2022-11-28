@@ -7,7 +7,7 @@
 using actionlib::SimpleActionServer;
 using cam_lidar_calibration::FeatureExtractor;
 
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
   // Initialize Node and handles
   ros::init(argc, argv, "FeatureExtractor");
@@ -15,8 +15,7 @@ int main(int argc, char ** argv)
 
   FeatureExtractor feature_extractor;
   SimpleActionServer<cam_lidar_calibration::RunOptimiseAction> optimise_action(
-    n, "run_optimise",
-    boost::bind(&FeatureExtractor::optimise, feature_extractor, _1, &optimise_action), false);
+      n, "run_optimise", boost::bind(&FeatureExtractor::optimise, feature_extractor, _1, &optimise_action), false);
   optimise_action.start();
 
   ros::Rate loop_rate(10);
@@ -24,10 +23,11 @@ int main(int argc, char ** argv)
   ros::AsyncSpinner spinner(4);
   spinner.start();
 
-  while (ros::ok()) {
-    if (feature_extractor.import_samples) {
-      actionlib::SimpleActionClient<cam_lidar_calibration::RunOptimiseAction> action_client(
-        "run_optimise", true);
+  while (ros::ok())
+  {
+    if (feature_extractor.import_samples)
+    {
+      actionlib::SimpleActionClient<cam_lidar_calibration::RunOptimiseAction> action_client("run_optimise", true);
       action_client.waitForServer();
       cam_lidar_calibration::RunOptimiseGoal goal;
       action_client.sendGoal(goal);

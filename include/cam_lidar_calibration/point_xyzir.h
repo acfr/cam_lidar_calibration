@@ -14,8 +14,7 @@ struct PointXYZIR
 } EIGEN_ALIGN16;
 }  // namespace pcl
 
-POINT_CLOUD_REGISTER_POINT_STRUCT(
-  PointXYZIR,
-  (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(uint8_t, ring, ring))
+POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZIR, (float, x, x)(float, y, y)(float, z, z)(float, intensity,
+                                                                                      intensity)(uint8_t, ring, ring))
 
 #endif

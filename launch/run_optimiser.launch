@@ -5,14 +5,14 @@
 <launch>
 
 	<rosparam file="$(find cam_lidar_calibration)/cfg/params.yaml" />
-	
+
   	<node pkg="cam_lidar_calibration" type="feature_extraction_node" name="feature_extraction" output="screen">
-		<param name="num_lowestvoq" type="int" value="50" /> 
+		<param name="num_lowestvoq" type="int" value="50" />
 		<param name="import_samples" value="$(arg import_samples)"/>
 		<param name="import_path" value="$(find cam_lidar_calibration)/data/vlp/poses.csv"/>
 
 		<!-- If your lidar is not calibrated well interally, it may require a distance offset (millimetres) on each point -->
-		<param name="distance_offset_mm" value="0" /> 
+		<param name="distance_offset_mm" value="0" />
   	</node>
 
   	<!-- Only open rviz and rqt if not importing samples -->

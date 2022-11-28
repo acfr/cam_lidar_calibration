@@ -21,39 +21,39 @@
 
 #include "cam_lidar_calibration/point_xyzir.h"
 
-double colmap[50][3] = {{0, 0, 0.5385},           {0, 0, 0.6154},
-                        {0, 0, 0.6923},           {0, 0, 0.7692},
-                        {0, 0, 0.8462},           {0, 0, 0.9231},
-                        {0, 0, 1.0000},           {0, 0.0769, 1.0000},
-                        {0, 0.1538, 1.0000},      {0, 0.2308, 1.0000},
-                        {0, 0.3846, 1.0000},      {0, 0.4615, 1.0000},
-                        {0, 0.5385, 1.0000},      {0, 0.6154, 1.0000},
-                        {0, 0.6923, 1.0000},      {0, 0.7692, 1.0000},
-                        {0, 0.8462, 1.0000},      {0, 0.9231, 1.0000},
-                        {0, 1.0000, 1.0000},      {0.0769, 1.0000, 0.9231},
-                        {0.1538, 1.0000, 0.8462}, {0.2308, 1.0000, 0.7692},
-                        {0.3077, 1.0000, 0.6923}, {0.3846, 1.0000, 0.6154},
-                        {0.4615, 1.0000, 0.5385}, {0.5385, 1.0000, 0.4615},
-                        {0.6154, 1.0000, 0.3846}, {0.6923, 1.0000, 0.3077},
-                        {0.7692, 1.0000, 0.2308}, {0.8462, 1.0000, 0.1538},
-                        {0.9231, 1.0000, 0.0769}, {1.0000, 1.0000, 0},
-                        {1.0000, 0.9231, 0},      {1.0000, 0.8462, 0},
-                        {1.0000, 0.7692, 0},      {1.0000, 0.6923, 0},
-                        {1.0000, 0.6154, 0},      {1.0000, 0.5385, 0},
-                        {1.0000, 0.4615, 0},      {1.0000, 0.3846, 0},
-                        {1.0000, 0.3077, 0},      {1.0000, 0.2308, 0},
-                        {1.0000, 0.1538, 0},      {1.0000, 0.0769, 0},
-                        {1.0000, 0, 0},           {0.9231, 0, 0},
-                        {0.8462, 0, 0},           {0.7692, 0, 0},
-                        {0.6923, 0, 0},           {0.6154, 0, 0}};
+double colmap[50][3] = { { 0, 0, 0.5385 },           { 0, 0, 0.6154 },
+                         { 0, 0, 0.6923 },           { 0, 0, 0.7692 },
+                         { 0, 0, 0.8462 },           { 0, 0, 0.9231 },
+                         { 0, 0, 1.0000 },           { 0, 0.0769, 1.0000 },
+                         { 0, 0.1538, 1.0000 },      { 0, 0.2308, 1.0000 },
+                         { 0, 0.3846, 1.0000 },      { 0, 0.4615, 1.0000 },
+                         { 0, 0.5385, 1.0000 },      { 0, 0.6154, 1.0000 },
+                         { 0, 0.6923, 1.0000 },      { 0, 0.7692, 1.0000 },
+                         { 0, 0.8462, 1.0000 },      { 0, 0.9231, 1.0000 },
+                         { 0, 1.0000, 1.0000 },      { 0.0769, 1.0000, 0.9231 },
+                         { 0.1538, 1.0000, 0.8462 }, { 0.2308, 1.0000, 0.7692 },
+                         { 0.3077, 1.0000, 0.6923 }, { 0.3846, 1.0000, 0.6154 },
+                         { 0.4615, 1.0000, 0.5385 }, { 0.5385, 1.0000, 0.4615 },
+                         { 0.6154, 1.0000, 0.3846 }, { 0.6923, 1.0000, 0.3077 },
+                         { 0.7692, 1.0000, 0.2308 }, { 0.8462, 1.0000, 0.1538 },
+                         { 0.9231, 1.0000, 0.0769 }, { 1.0000, 1.0000, 0 },
+                         { 1.0000, 0.9231, 0 },      { 1.0000, 0.8462, 0 },
+                         { 1.0000, 0.7692, 0 },      { 1.0000, 0.6923, 0 },
+                         { 1.0000, 0.6154, 0 },      { 1.0000, 0.5385, 0 },
+                         { 1.0000, 0.4615, 0 },      { 1.0000, 0.3846, 0 },
+                         { 1.0000, 0.3077, 0 },      { 1.0000, 0.2308, 0 },
+                         { 1.0000, 0.1538, 0 },      { 1.0000, 0.0769, 0 },
+                         { 1.0000, 0, 0 },           { 0.9231, 0, 0 },
+                         { 0.8462, 0, 0 },           { 0.7692, 0, 0 },
+                         { 0.6923, 0, 0 },           { 0.6154, 0, 0 } };
 
 struct OptimisationSample
 {
-  cv::Point3d camera_centre{0, 0, 0};
-  cv::Point3d camera_normal{0, 0, 0};
+  cv::Point3d camera_centre{ 0, 0, 0 };
+  cv::Point3d camera_normal{ 0, 0, 0 };
   std::vector<cv::Point3d> camera_corners;
-  cv::Point3d lidar_centre{0, 0, 0};
-  cv::Point3d lidar_normal{0, 0, 0};
+  cv::Point3d lidar_centre{ 0, 0, 0 };
+  cv::Point3d lidar_normal{ 0, 0, 0 };
   std::vector<cv::Point3d> lidar_corners;
   std::vector<double> angles_0;
   std::vector<double> angles_1;
@@ -81,11 +81,9 @@ struct Rotation
     using std::sin;
 
     // Calculate rotation about x axis
-    cv::Mat R_x =
-      (Mat_<double>(3, 3) << 1, 0, 0, 0, cos(roll), -sin(roll), 0, sin(roll), cos(roll));
+    cv::Mat R_x = (Mat_<double>(3, 3) << 1, 0, 0, 0, cos(roll), -sin(roll), 0, sin(roll), cos(roll));
     // Calculate rotation about y axis
-    cv::Mat R_y =
-      (Mat_<double>(3, 3) << cos(pitch), 0, sin(pitch), 0, 1, 0, -sin(pitch), 0, cos(pitch));
+    cv::Mat R_y = (Mat_<double>(3, 3) << cos(pitch), 0, sin(pitch), 0, 1, 0, -sin(pitch), 0, cos(pitch));
     // Calculate rotation about z axis
     cv::Mat R_z = (Mat_<double>(3, 3) << cos(yaw), -sin(yaw), 0, sin(yaw), cos(yaw), 0, 0, 0, 1);
 
@@ -101,20 +99,19 @@ struct RotationTranslation
   double z;
   operator const std::string() const
   {
-    return std::string("{") + "roll:" + std::to_string(rot.roll) +
-           ", pitch:" + std::to_string(rot.pitch) + ", yaw:" + std::to_string(rot.yaw) +
-           ", x:" + std::to_string(x) + ", y:" + std::to_string(y) + ", z:" + std::to_string(z) +
-           "}";
+    return std::string("{") + "roll:" + std::to_string(rot.roll) + ", pitch:" + std::to_string(rot.pitch) +
+           ", yaw:" + std::to_string(rot.yaw) + ", x:" + std::to_string(x) + ", y:" + std::to_string(y) +
+           ", z:" + std::to_string(z) + "}";
   }
 };
 
-cv::Mat operator*(const Rotation & lhs, const cv::Point3d & rhs)
+cv::Mat operator*(const Rotation& lhs, const cv::Point3d& rhs)
 {
   cv::Mat mat = cv::Mat(rhs).reshape(1);
   // Combined rotation matrix
   return lhs.toMat() * mat;
 }
-cv::Mat operator*(const RotationTranslation & lhs, const cv::Point3d & rhs)
+cv::Mat operator*(const RotationTranslation& lhs, const cv::Point3d& rhs)
 {
   auto rotated = cv::Point3d(lhs.rot * rhs);
   rotated.x += lhs.x;
@@ -133,7 +130,8 @@ public:
     nh_.getParam("csv", csv);
 
     const size_t last_slash_idx = csv.rfind('/');
-    if (std::string::npos != last_slash_idx) {
+    if (std::string::npos != last_slash_idx)
+    {
       data_dir = csv.substr(0, last_slash_idx);
     }
 
@@ -163,7 +161,8 @@ public:
     distcoeff.at<double>(3) = D[3];
 
     param_msg = ros::topic::waitForMessage<std_msgs::Float64MultiArray>("/extrinsic_calib_param");
-    if (param_msg != NULL) {
+    if (param_msg != NULL)
+    {
       param_msg_callback();
     }
   }
@@ -193,12 +192,11 @@ public:
     tf_msg.transform.translation.x = transform.inverse().getOrigin().x();
     tf_msg.transform.translation.y = transform.inverse().getOrigin().y();
     tf_msg.transform.translation.z = transform.inverse().getOrigin().z();
-    printf(
-      "\nCalibration params lidar 2 cam (w,x,y,z,x,y,z): "
-      "%6.10f,%6.10f,%6.10f,%6.10f,%6.10f,%6.10f,%6.10f\n",
-      tf_msg.transform.rotation.w, tf_msg.transform.rotation.x, tf_msg.transform.rotation.y,
-      tf_msg.transform.rotation.z, tf_msg.transform.translation.x, tf_msg.transform.translation.y,
-      tf_msg.transform.translation.z);
+    printf("\nCalibration params lidar 2 cam (w,x,y,z,x,y,z): "
+           "%6.10f,%6.10f,%6.10f,%6.10f,%6.10f,%6.10f,%6.10f\n",
+           tf_msg.transform.rotation.w, tf_msg.transform.rotation.x, tf_msg.transform.rotation.y,
+           tf_msg.transform.rotation.z, tf_msg.transform.translation.x, tf_msg.transform.translation.y,
+           tf_msg.transform.translation.z);
     double r_val, y_val, p_val;
     geometry_msgs::Quaternion q = tf_msg.transform.rotation;
     tf::Quaternion tfq;
@@ -216,11 +214,11 @@ public:
 
   void results_and_visualise()
   {
-    std::printf(
-      "\n---- Calculating average reprojection error on %d samples ---- \n", sample_list.size());
+    std::printf("\n---- Calculating average reprojection error on %d samples ---- \n", sample_list.size());
     // Calculate mean and stdev of pixel error across all test samples
     std::vector<float> pix_err, pix_errmm;
-    for (std::size_t i = 0; i < sample_list.size(); i++) {
+    for (std::size_t i = 0; i < sample_list.size(); i++)
+    {
       std::vector<cv::Point2d> cam, lidar;
       float pe = compute_reprojection(sample_list[i], cam, lidar);
       pix_err.push_back(pe);
@@ -232,42 +230,43 @@ public:
       double h0_diff = abs(sample_list[i].heights[0] - board_dimensions.height);
       double h1_diff = abs(sample_list[i].heights[1] - board_dimensions.height);
       double be_dim_err = w0_diff + w1_diff + h0_diff + h1_diff;
-      std::printf(
-        " %3d/%3d | dist=%6.3fm, dimerr=%8.3fmm | error: %7.3fpix  --> "
-        "%7.3fmm\n",
-        i + 1, sample_list.size(), sample_list[i].distance_from_origin, be_dim_err, pe,
-        pe * sample_list[i].pixeltometre * 1000);
+      std::printf(" %3d/%3d | dist=%6.3fm, dimerr=%8.3fmm | error: %7.3fpix  --> "
+                  "%7.3fmm\n",
+                  i + 1, sample_list.size(), sample_list[i].distance_from_origin, be_dim_err, pe,
+                  pe * sample_list[i].pixeltometre * 1000);
     }
     float mean_pe, stdev_pe, mean_pemm, stdev_pemm;
     get_mean_stdev(pix_err, mean_pe, stdev_pe);
     get_mean_stdev(pix_errmm, mean_pemm, stdev_pemm);
-    printf(
-      "\nCalibration params (roll,pitch,yaw,x,y,z): "
-      "%6.4f,%6.4f,%6.4f,%6.4f,%6.4f,%6.4f\n",
-      param_msg->data[0], param_msg->data[1], param_msg->data[2], param_msg->data[3],
-      param_msg->data[4], param_msg->data[5]);
+    printf("\nCalibration params (roll,pitch,yaw,x,y,z): "
+           "%6.4f,%6.4f,%6.4f,%6.4f,%6.4f,%6.4f\n",
+           param_msg->data[0], param_msg->data[1], param_msg->data[2], param_msg->data[3], param_msg->data[4],
+           param_msg->data[5]);
     printf("\nMean reprojection error across  %d samples\n", sample_list.size());
     std::printf("- Error (pix) = %6.3f pix, stdev = %6.3f\n", mean_pe, stdev_pe);
     std::printf("- Error (mm)  = %6.3f mm , stdev = %6.3f\n\n\n", mean_pemm, stdev_pemm);
 
-    if (visualise) {
-      std::string image_path =
-        data_dir + "/images/pose" + std::to_string(visualise_pose_num) + ".png";
-      std::string pcd_path =
-        data_dir + "/pcd/pose" + std::to_string(visualise_pose_num) + "_full.pcd";
+    if (visualise)
+    {
+      std::string image_path = data_dir + "/images/pose" + std::to_string(visualise_pose_num) + ".png";
+      std::string pcd_path = data_dir + "/pcd/pose" + std::to_string(visualise_pose_num) + "_full.pcd";
 
       //  Project the two centres onto an image
       std::vector<cv::Point2d> cam_project, lidar_project;
       cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
-      if (image.empty()) {
+      if (image.empty())
+      {
         ROS_ERROR_STREAM("Could not read image file, check if image exists at: " << image_path);
       }
 
       pcl::PointCloud<pcl::PointXYZIR>::Ptr og_cloud(new pcl::PointCloud<pcl::PointXYZIR>);
       pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZIR>);
-      if (pcl::io::loadPCDFile<pcl::PointXYZIR>(pcd_path, *og_cloud) == -1) {
+      if (pcl::io::loadPCDFile<pcl::PointXYZIR>(pcd_path, *og_cloud) == -1)
+      {
         ROS_ERROR_STREAM("Could not read pcd file, check if pcd file exists at: " << pcd_path);
-      } else {
+      }
+      else
+      {
         sensor_msgs::PointCloud2 cloud_msg;
         pcl::toROSMsg(*og_cloud, cloud_msg);
 
@@ -275,9 +274,10 @@ public:
         tf2::doTransform(cloud_msg, cloud_tf, tf_msg);
         pcl::fromROSMsg(cloud_tf, *cloud);
 
-        if (cloud->points.size()) {
-          for (pcl::PointCloud<pcl::PointXYZIR>::const_iterator it = cloud->begin();
-               it != cloud->end(); it++) {
+        if (cloud->points.size())
+        {
+          for (pcl::PointCloud<pcl::PointXYZIR>::const_iterator it = cloud->begin(); it != cloud->end(); it++)
+          {
             double tmpxC = it->x / it->z;
             double tmpyC = it->y / it->z;
             double tmpzC = it->z;
@@ -287,55 +287,50 @@ public:
 
             // Applying the distortion
             double r2 = tmpxC * tmpxC + tmpyC * tmpyC;
-            if (distortion_model == "fisheye") {
+            if (distortion_model == "fisheye")
+            {
               double r1 = pow(r2, 0.5);
               double a0 = std::atan(r1);
               double a1;
-              a1 =
-                a0 *
-                (1 + distcoeff.at<double>(0) * pow(a0, 2) + distcoeff.at<double>(1) * pow(a0, 4) +
-                 distcoeff.at<double>(2) * pow(a0, 6) + distcoeff.at<double>(3) * pow(a0, 8));
+              a1 = a0 * (1 + distcoeff.at<double>(0) * pow(a0, 2) + distcoeff.at<double>(1) * pow(a0, 4) +
+                         distcoeff.at<double>(2) * pow(a0, 6) + distcoeff.at<double>(3) * pow(a0, 8));
               planepointsC.x = (a1 / r1) * tmpxC;
               planepointsC.y = (a1 / r1) * tmpyC;
-            } else {
-              double tmpdist = 1 + distcoeff.at<double>(0) * r2 +
-                               distcoeff.at<double>(1) * r2 * r2 +
+            }
+            else
+            {
+              double tmpdist = 1 + distcoeff.at<double>(0) * r2 + distcoeff.at<double>(1) * r2 * r2 +
                                distcoeff.at<double>(4) * r2 * r2 * r2;
               planepointsC.x = tmpxC * tmpdist + 2 * distcoeff.at<double>(2) * tmpxC * tmpyC +
                                distcoeff.at<double>(3) * (r2 + 2 * tmpxC * tmpxC);
-              planepointsC.y = tmpyC * tmpdist +
-                               distcoeff.at<double>(2) * (r2 + 2 * tmpyC * tmpyC) +
+              planepointsC.y = tmpyC * tmpdist + distcoeff.at<double>(2) * (r2 + 2 * tmpyC * tmpyC) +
                                2 * distcoeff.at<double>(3) * tmpxC * tmpyC;
             }
-            planepointsC.x =
-              cameramat.at<double>(0, 0) * planepointsC.x + cameramat.at<double>(0, 2);
-            planepointsC.y =
-              cameramat.at<double>(1, 1) * planepointsC.y + cameramat.at<double>(1, 2);
+            planepointsC.x = cameramat.at<double>(0, 0) * planepointsC.x + cameramat.at<double>(0, 2);
+            planepointsC.y = cameramat.at<double>(1, 1) * planepointsC.y + cameramat.at<double>(1, 2);
 
-            if (
-              planepointsC.y >= 0 and planepointsC.y < height and planepointsC.x >= 0 and
-              planepointsC.x < width and tmpzC >= 0 and std::abs(tmpxC) <= 2.0) {
+            if (planepointsC.y >= 0 and planepointsC.y < height and planepointsC.x >= 0 and planepointsC.x < width and
+                tmpzC >= 0 and std::abs(tmpxC) <= 2.0)
+            {
               int point_size = 2;
-              cv::circle(
-                image, cv::Point(planepointsC.x, planepointsC.y), point_size,
-                CV_RGB(
-                  255 * colmap[50 - range][0], 255 * colmap[50 - range][1],
-                  255 * colmap[50 - range][2]),
-                -1);
+              cv::circle(image, cv::Point(planepointsC.x, planepointsC.y), point_size,
+                         CV_RGB(255 * colmap[50 - range][0], 255 * colmap[50 - range][1], 255 * colmap[50 - range][2]),
+                         -1);
             }
           }
         }
       }
       ROS_INFO_STREAM("Projecting points onto image for pose #" << (visualise_pose_num));
       compute_reprojection(sample_list[visualise_pose_num - 1], cam_project, lidar_project);
-      for (auto & point : cam_project) {
+      for (auto& point : cam_project)
+      {
         cv::circle(image, point, 15, CV_RGB(0, 255, 0), 2);
         cv::drawMarker(image, point, CV_RGB(0, 255, 0), cv::MARKER_CROSS, 25, 2, cv::LINE_8);
       }
-      for (auto & point : lidar_project) {
+      for (auto& point : lidar_project)
+      {
         cv::circle(image, point, 15, CV_RGB(255, 255, 0), 2);
-        cv::drawMarker(
-          image, point, CV_RGB(255, 255, 0), cv::MARKER_TILTED_CROSS, 20, 2, cv::LINE_8);
+        cv::drawMarker(image, point, CV_RGB(255, 255, 0), cv::MARKER_TILTED_CROSS, 20, 2, cv::LINE_8);
       }
       cv::Mat resized_img;
       cv::resize(image, resized_img, cv::Size(), 0.75, 0.75);
@@ -351,39 +346,48 @@ public:
     std::string line, word;
 
     std::ifstream read_samples(pose_path);
-    if (!read_samples.good()) {
+    if (!read_samples.good())
+    {
       ROS_ERROR_STREAM("REPROJECTION - No pose file found at " << pose_path);
     }
     ROS_INFO_STREAM("Importing samples from: " << pose_path);
-    while (std::getline(read_samples, line, '\n')) {
+    while (std::getline(read_samples, line, '\n'))
+    {
       // used for breaking up words
       std::stringstream s(line);
 
       // read every column data of a row and store it in a string variable,
       // 'word'
       std::vector<double> line_double;
-      while (getline(s, word, ',')) {
+      while (getline(s, word, ','))
+      {
         line_double.push_back(atof(word.c_str()));
       }
-      if (line_double.size() > 1) {
-        row.push_back({line_double[0], line_double[1], line_double[2]});
-      } else {
-        row.push_back({line_double[0], 0, 0});
+      if (line_double.size() > 1)
+      {
+        row.push_back({ line_double[0], line_double[1], line_double[2] });
+      }
+      else
+      {
+        row.push_back({ line_double[0], 0, 0 });
       }
     }
 
     // Shove the double vector elements into the OptimiseSample struct
     int sample_numrows = 19;  // non-zero indexed, but the i value is.
-    for (std::size_t i = 0; i < row.size(); i += sample_numrows) {
+    for (std::size_t i = 0; i < row.size(); i += sample_numrows)
+    {
       OptimisationSample temp;
       temp.camera_centre = row[i];
       temp.camera_normal = row[i + 1];
-      for (int j = 0; j < 4; j++) {
+      for (int j = 0; j < 4; j++)
+      {
         temp.camera_corners.push_back(row[i + 2 + j]);
       }
       temp.lidar_centre = row[i + 6];
       temp.lidar_normal = row[i + 7];
-      for (int k = 0; k < 4; k++) {
+      for (int k = 0; k < 4; k++)
+      {
         temp.lidar_corners.push_back(row[i + 8 + k]);
       }
       temp.angles_0.push_back(row[i + 12].x);
@@ -404,8 +408,7 @@ public:
     ROS_INFO_STREAM(sample_list.size() << " samples imported");
   }
 
-  float compute_reprojection(
-    OptimisationSample sample, std::vector<cv::Point2d> & cam, std::vector<cv::Point2d> & lidar)
+  float compute_reprojection(OptimisationSample sample, std::vector<cv::Point2d>& cam, std::vector<cv::Point2d>& lidar)
   {
     cv::Mat rvec = cv::Mat_<double>::zeros(3, 1);
     cv::Mat tvec = cv::Mat_<double>::zeros(3, 1);
@@ -423,10 +426,13 @@ public:
     // ROS_INFO_STREAM("Camera distortion model = " << distortion_model);
     std::vector<cv::Point2d> cam_dist, lidar_dist;
 
-    if (distortion_model == "fisheye") {
+    if (distortion_model == "fisheye")
+    {
       cv::fisheye::projectPoints(cam_centre_3d, cam, rvec, tvec, cameramat, distcoeff);
       cv::fisheye::projectPoints(lidar_centre_3d, lidar, rvec, tvec, cameramat, distcoeff);
-    } else {
+    }
+    else
+    {
       cv::projectPoints(cam_centre_3d, rvec, tvec, cameramat, distcoeff, cam);
       cv::projectPoints(lidar_centre_3d, rvec, tvec, cameramat, distcoeff, lidar);
     }
@@ -435,15 +441,13 @@ public:
     return pixel_error;
   }
 
-  void get_mean_stdev(std::vector<float> & input_vec, float & mean, float & stdev)
+  void get_mean_stdev(std::vector<float>& input_vec, float& mean, float& stdev)
   {
     float sum = std::accumulate(std::begin(input_vec), std::end(input_vec), 0.0);
     mean = sum / input_vec.size();
 
     float accum = 0.0;
-    std::for_each(std::begin(input_vec), std::end(input_vec), [&](const float d) {
-      accum += (d - mean) * (d - mean);
-    });
+    std::for_each(std::begin(input_vec), std::end(input_vec), [&](const float d) { accum += (d - mean) * (d - mean); });
 
     stdev = sqrt(accum / (input_vec.size() - 1));
   }
@@ -470,7 +474,7 @@ private:
   RotationTranslation rot_trans;
 };
 
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "assess_calibration");
   AssessCalibration ac;

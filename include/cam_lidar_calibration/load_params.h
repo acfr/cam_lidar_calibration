@@ -20,7 +20,7 @@ struct initial_parameters_t
   std::string camera_topic, camera_info, lidar_topic;
 };
 
-void loadParams(const ros::NodeHandle & n, initial_parameters_t & i_params);
+void loadParams(const ros::NodeHandle& n, initial_parameters_t& i_params);
 
 }  // namespace cam_lidar_calibration
 

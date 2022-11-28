@@ -133,7 +133,7 @@ install(DIRECTORY rviz/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
   )
 
-catkin_install_python(PROGRAMS 
+catkin_install_python(PROGRAMS
   scripts/visualise_results.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

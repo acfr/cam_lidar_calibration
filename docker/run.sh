@@ -44,7 +44,7 @@ while true; do
   esac
 done
 
-if [ $CUDA == "on" ]; 
+if [ $CUDA == "on" ];
 then
     ENVS="--env=NVIDIA_VISIBLE_DEVICES=all
 	  --env=NVIDIA_DRIVER_CAPABILITIES=all

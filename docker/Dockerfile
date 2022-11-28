@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
          wget && \
      rm -rf /var/lib/apt/lists/*
 
-# Install ROS 
+# Install ROS
 RUN sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
 RUN apt-key adv --keyserver 'hkp://keyserver.ubuntu.com:80' --recv-key C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
 RUN curl -sSL 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0xC1CF6E31E6BADE8868B172B4F42ED6FBAB17C654' | apt-key add -
@@ -56,10 +56,10 @@ RUN pip install -U pandas scipy
 COPY ./dependencies /tmp/dependencies
 RUN apt-get update && \
     sed "s/\melodic/melodic/g" "/tmp/dependencies" | xargs apt-get install -y #&& \
-    rm -rf /var/lib/apt/lists/* 
+    rm -rf /var/lib/apt/lists/*
 
 # Clean image
-RUN sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/* 
+RUN sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/*
 
 CMD ["tail", "-f", "/dev/null"]
 ADD entrypoint.sh /entrypoint.sh
