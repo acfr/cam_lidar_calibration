@@ -49,6 +49,8 @@ namespace cam_lidar_calibration
 
         bool import_samples;
 
+        void visualiseBoundedCloud();
+
     private:
         void passthrough(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
                          pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
@@ -76,7 +78,13 @@ namespace cam_lidar_calibration
         int num_lowestvoq;
         double distance_offset;
 
-        int flag = 0;
+        std::shared_ptr<std::mutex> last_pcl_mutex;
+        pcl::PointCloud<pcl::PointXYZIR>::ConstPtr last_pcl;
+
+        void get_last_cloud(pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& out);
+        void set_last_cloud(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& in);
+
+        std::shared_ptr<std::atomic<int>> flag_;
         cam_lidar_calibration::boundsConfig bounds_;
 
         typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, pcl::PointCloud<pcl::PointXYZIR>>

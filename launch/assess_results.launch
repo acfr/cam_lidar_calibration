@@ -30,7 +30,7 @@
 		
 		<!-- Specify path of pose - if you want to visualise, it'll take png and pcd files from this folder -->
 	    <param name="visualise" value="$(arg visualise)"/>
-	    <param name="visualise_pose_num" value="16"/>
+	    <param name="visualise_pose_num" value="1"/>
 
   	</node>
 </launch>

@@ -163,7 +163,7 @@ class AssessCalibration {
             trans.setZ(param_msg->data[5]);
             transform.setRotation(quat);
             transform.setOrigin(trans);
-            // ROS_INFO("Inverting rotation and translation for projecting LiDAR points into camera image");
+            ROS_INFO("Inverting rotation and translation for projecting LiDAR points into camera image");
             tf_msg.transform.rotation.w = transform.inverse().getRotation().w();
             tf_msg.transform.rotation.x = transform.inverse().getRotation().x();
             tf_msg.transform.rotation.y = transform.inverse().getRotation().y();
@@ -225,14 +225,14 @@ class AssessCalibration {
                 std::vector<cv::Point2d> cam_project, lidar_project;
                 cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
                  if (image.empty()) {
-                    ROS_ERROR_STREAM("Could not read image file, check if image exists at: " << image_path);
+                    ROS_FATAL_STREAM("Could not read image file, check if image exists at: " << image_path);
                 }
 
                 pcl::PointCloud<pcl::PointXYZIR>::Ptr og_cloud(new pcl::PointCloud<pcl::PointXYZIR>);
                 pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZIR>);
                 if(pcl::io::loadPCDFile<pcl::PointXYZIR> (pcd_path, *og_cloud) == -1)
                 {
-                    ROS_ERROR_STREAM("Could not read pcd file, check if pcd file exists at: " << pcd_path);
+                    ROS_FATAL_STREAM("Could not read pcd file, check if pcd file exists at: " << pcd_path);
                 } else {
                     sensor_msgs::PointCloud2 cloud_msg;
                     pcl::toROSMsg(*og_cloud, cloud_msg);

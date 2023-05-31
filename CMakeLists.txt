@@ -21,9 +21,10 @@ find_package(catkin REQUIRED COMPONENTS
   rviz
   sensor_msgs
   std_msgs
+  backward_ros
   )
 
-find_package(OpenCV REQUIRED)
+find_package(OpenCV 4 REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(Eigen3 REQUIRED)
 find_package(Qt5 REQUIRED Core Widgets)

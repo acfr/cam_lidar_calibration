@@ -216,5 +216,9 @@ Please cite our work if this package helps with your research.
 }
 ```
 
+## TODO
+
+- [ ] Reintroduce `/camera_info` subscriber
+
 
 

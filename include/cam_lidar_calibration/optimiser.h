@@ -7,7 +7,7 @@
 #include <string>
 #include <math.h>
 
-#include <opencv/cv.hpp>
+#include <opencv2/opencv.hpp>
 #include <ros/ros.h>
 
 #include "cam_lidar_calibration/load_params.h"

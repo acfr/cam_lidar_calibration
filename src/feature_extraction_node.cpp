@@ -34,6 +34,7 @@ int main(int argc, char** argv)
             break;
         }
 
+        feature_extractor.visualiseBoundedCloud();
         feature_extractor.visualiseSamples();
         loop_rate.sleep();
     }
