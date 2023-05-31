@@ -76,7 +76,7 @@ namespace cam_lidar_calibration
         int num_lowestvoq;
         double distance_offset;
 
-        int flag = 0;
+        std::shared_ptr<std::atomic<int>> flag_;
         cam_lidar_calibration::boundsConfig bounds_;
 
         typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, pcl::PointCloud<pcl::PointXYZIR>>
