@@ -21,11 +21,13 @@ struct Rotation
   double roll;  // Rotation optimization variables
   double pitch;
   double yaw;
+
   operator const std::string() const
   {
     return std::string("{") + "roll:" + std::to_string(roll) + ", pitch:" + std::to_string(pitch) +
            ", yaw:" + std::to_string(yaw) + "}";
   }
+
   cv::Mat toMat() const
   {
     using cv::Mat_;
@@ -49,6 +51,7 @@ struct RotationTranslation
   double x;
   double y;
   double z;
+
   operator const std::string() const
   {
     return std::string("{") + "roll:" + std::to_string(rot.roll) + ", pitch:" + std::to_string(rot.pitch) +
@@ -170,8 +173,6 @@ private:
 
   std::vector<double> analytical_euler(std::vector<OptimisationSample>& set, cv::Mat& camera_centres_,
                                        cv::Mat& camera_normals_, cv::Mat& lidar_centres_, cv::Mat& lidar_normals_);
-
-  void get_mean_stdev(std::vector<float>& input, float& mean, float& stdev);
 
   Rotation best_rotation_;
   RotationTranslation best_rotation_translation_;

@@ -192,11 +192,13 @@ public:
     tf_msg.transform.translation.x = transform.inverse().getOrigin().x();
     tf_msg.transform.translation.y = transform.inverse().getOrigin().y();
     tf_msg.transform.translation.z = transform.inverse().getOrigin().z();
+
     printf("\nCalibration params lidar 2 cam (w,x,y,z,x,y,z): "
            "%6.10f,%6.10f,%6.10f,%6.10f,%6.10f,%6.10f,%6.10f\n",
            tf_msg.transform.rotation.w, tf_msg.transform.rotation.x, tf_msg.transform.rotation.y,
            tf_msg.transform.rotation.z, tf_msg.transform.translation.x, tf_msg.transform.translation.y,
            tf_msg.transform.translation.z);
+
     double r_val, y_val, p_val;
     geometry_msgs::Quaternion q = tf_msg.transform.rotation;
     tf::Quaternion tfq;
@@ -214,9 +216,11 @@ public:
 
   void results_and_visualise()
   {
-    std::printf("\n---- Calculating average reprojection error on %d samples ---- \n", sample_list.size());
+    printf("\n---- Calculating average reprojection error on %d samples ---- \n", sample_list.size());
+
     // Calculate mean and stdev of pixel error across all test samples
     std::vector<float> pix_err, pix_errmm;
+
     for (std::size_t i = 0; i < sample_list.size(); i++)
     {
       std::vector<cv::Point2d> cam, lidar;
@@ -230,21 +234,27 @@ public:
       double h0_diff = abs(sample_list[i].heights[0] - board_dimensions.height);
       double h1_diff = abs(sample_list[i].heights[1] - board_dimensions.height);
       double be_dim_err = w0_diff + w1_diff + h0_diff + h1_diff;
-      std::printf(" %3d/%3d | dist=%6.3fm, dimerr=%8.3fmm | error: %7.3fpix  --> "
-                  "%7.3fmm\n",
-                  i + 1, sample_list.size(), sample_list[i].distance_from_origin, be_dim_err, pe,
-                  pe * sample_list[i].pixeltometre * 1000);
+
+      printf(" %3d/%3d | dist=%6.3fm, dimerr=%8.3fmm | error: %7.3fpix  --> "
+             "%7.3fmm\n",
+             i + 1, sample_list.size(), sample_list[i].distance_from_origin, be_dim_err, pe,
+             pe * sample_list[i].pixeltometre * 1000);
     }
+
     float mean_pe, stdev_pe, mean_pemm, stdev_pemm;
+
     get_mean_stdev(pix_err, mean_pe, stdev_pe);
     get_mean_stdev(pix_errmm, mean_pemm, stdev_pemm);
+
     printf("\nCalibration params (roll,pitch,yaw,x,y,z): "
            "%6.4f,%6.4f,%6.4f,%6.4f,%6.4f,%6.4f\n",
            param_msg->data[0], param_msg->data[1], param_msg->data[2], param_msg->data[3], param_msg->data[4],
            param_msg->data[5]);
+
     printf("\nMean reprojection error across  %d samples\n", sample_list.size());
-    std::printf("- Error (pix) = %6.3f pix, stdev = %6.3f\n", mean_pe, stdev_pe);
-    std::printf("- Error (mm)  = %6.3f mm , stdev = %6.3f\n\n\n", mean_pemm, stdev_pemm);
+
+    printf("- Error (pix) = %6.3f pix, stdev = %6.3f\n", mean_pe, stdev_pe);
+    printf("- Error (mm)  = %6.3f mm , stdev = %6.3f\n\n\n", mean_pemm, stdev_pemm);
 
     if (visualise)
     {
@@ -254,6 +264,7 @@ public:
       //  Project the two centres onto an image
       std::vector<cv::Point2d> cam_project, lidar_project;
       cv::Mat image = cv::imread(image_path, cv::IMREAD_COLOR);
+
       if (image.empty())
       {
         ROS_ERROR_STREAM("Could not read image file, check if image exists at: " << image_path);
@@ -261,6 +272,7 @@ public:
 
       pcl::PointCloud<pcl::PointXYZIR>::Ptr og_cloud(new pcl::PointCloud<pcl::PointXYZIR>);
       pcl::PointCloud<pcl::PointXYZIR>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZIR>);
+
       if (pcl::io::loadPCDFile<pcl::PointXYZIR>(pcd_path, *og_cloud) == -1)
       {
         ROS_ERROR_STREAM("Could not read pcd file, check if pcd file exists at: " << pcd_path);
@@ -306,6 +318,7 @@ public:
               planepointsC.y = tmpyC * tmpdist + distcoeff.at<double>(2) * (r2 + 2 * tmpyC * tmpyC) +
                                2 * distcoeff.at<double>(3) * tmpxC * tmpyC;
             }
+
             planepointsC.x = cameramat.at<double>(0, 0) * planepointsC.x + cameramat.at<double>(0, 2);
             planepointsC.y = cameramat.at<double>(1, 1) * planepointsC.y + cameramat.at<double>(1, 2);
 
@@ -320,18 +333,22 @@ public:
           }
         }
       }
+
       ROS_INFO_STREAM("Projecting points onto image for pose #" << (visualise_pose_num));
       compute_reprojection(sample_list[visualise_pose_num - 1], cam_project, lidar_project);
+
       for (auto& point : cam_project)
       {
         cv::circle(image, point, 15, CV_RGB(0, 255, 0), 2);
         cv::drawMarker(image, point, CV_RGB(0, 255, 0), cv::MARKER_CROSS, 25, 2, cv::LINE_8);
       }
+
       for (auto& point : lidar_project)
       {
         cv::circle(image, point, 15, CV_RGB(255, 255, 0), 2);
         cv::drawMarker(image, point, CV_RGB(255, 255, 0), cv::MARKER_TILTED_CROSS, 20, 2, cv::LINE_8);
       }
+
       cv::Mat resized_img;
       cv::resize(image, resized_img, cv::Size(), 0.75, 0.75);
       cv::imshow("Reprojection", resized_img);

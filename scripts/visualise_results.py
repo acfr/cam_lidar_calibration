@@ -160,6 +160,45 @@ if __name__ == "__main__":
     df_orig = pandas.read_csv(path)
     df = df_orig.copy()
 
+    ###
+    # Pre Process the file data to
+
+    yaw_array = []
+    percent_array = []
+    pos_counter = 0
+    neg_counter = 0
+
+    for row in df.index:
+        yaw = df["yaw"][row]
+
+        if yaw < 0:
+            neg_counter += 1
+        else:
+            pos_counter += 1
+
+        # Find delta from pi
+        diff = np.abs(np.pi - np.abs(yaw))
+        percent = diff / np.pi * 100
+
+        percent_array.append(percent)
+        yaw_array.append(diff)
+
+    avg = np.average(yaw_array)
+    percent_avg = np.average(percent_array)
+
+    threshold_percentage = 1.0
+
+    if percent_avg < threshold_percentage:
+        for row in df.index:
+            yaw = df["yaw"][row]
+            if yaw < 0:
+                df.at[row, "yaw"] = 2 * np.pi + yaw
+                # wrap angle between [0, 2pi]. + yaw bcs yaw is negative.
+
+    # df.to_csv(path, index=False)
+
+    ### end of pre processing csv data
+
     # Initial filtering of general outliers
     params = ["roll", "pitch", "yaw", "x", "y", "z"]
     for p in params:

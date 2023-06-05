@@ -298,17 +298,6 @@ void Optimiser::SO_report_generation(int generation_number,
   best_rotation_.yaw = best_genes.yaw;
 }
 
-void Optimiser::get_mean_stdev(std::vector<float>& input_vec, float& mean, float& stdev)
-{
-  float sum = std::accumulate(std::begin(input_vec), std::end(input_vec), 0.0);
-  mean = sum / input_vec.size();
-
-  float accum = 0.0;
-  std::for_each(std::begin(input_vec), std::end(input_vec), [&](const float d) { accum += (d - mean) * (d - mean); });
-
-  stdev = sqrt(accum / (input_vec.size() - 1));
-}
-
 // Generate combinations of size k from the total samples captured
 void Optimiser::generate_sets(int offset, int k, std::vector<OptimisationSample>& set,
                               std::vector<OptimisationSample>& samples)
@@ -396,27 +385,34 @@ bool Optimiser::optimise(RotationTranslation& opt_result, std::vector<Optimisati
   ga_obj.verbose = false;
   ga_obj.population = 200;
   ga_obj.generation_max = 1000;
+
   ga_obj.calculate_SO_total_fitness = [&](const GA_Rot_t::thisChromosomeType& X) -> double {
     return this->calculate_SO_total_fitness(X);
   };
+
   ga_obj.init_genes = [&, initial_rotation, rotation_increment](Rotation& p,
                                                                 const std::function<double(void)>& rnd01) -> void {
     this->init_genes(p, rnd01, initial_rotation, rotation_increment);
   };
+
   ga_obj.eval_solution = [&](const Rotation& r, RotationCost& c) -> bool { return this->eval_solution(r, c); };
+
   ga_obj.mutate = [&, initial_rotation, rotation_increment](const Rotation& X_base,
                                                             const std::function<double(void)>& rnd01,
                                                             double shrink_scale) -> Rotation {
     return this->mutate(X_base, rnd01, initial_rotation, rotation_increment, shrink_scale);
   };
+
   ga_obj.crossover = [&](const Rotation& X1, const Rotation& X2, const std::function<double(void)>& rnd01) {
     return this->crossover(X1, X2, rnd01);
   };
+
   ga_obj.SO_report_generation = [&](int generation_number,
                                     const EA::GenerationType<Rotation, RotationCost>& last_generation,
                                     const Rotation& best_genes) -> void {
     this->SO_report_generation(generation_number, last_generation, best_genes);
   };
+
   ga_obj.best_stall_max = 100;
   ga_obj.average_stall_max = 100;
   ga_obj.tol_stall_average = 1e-8;
@@ -432,8 +428,10 @@ bool Optimiser::optimise(RotationTranslation& opt_result, std::vector<Optimisati
   // Reset starting point of rotation genes
   tf::Matrix3x3 rot;
   rot.setRPY(best_rotation_.roll, best_rotation_.pitch, best_rotation_.yaw);
+
   cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
                      rot.getRow(1)[1], rot.getRow(1)[2], rot.getRow(2)[0], rot.getRow(2)[1], rot.getRow(2)[2]);
+
   // Analytical Translation
   cv::Mat cp_trans = tmp_rot * camera_centres_.t();
   cv::Mat trans_diff = lidar_centres_.t() - cp_trans;
@@ -455,30 +453,37 @@ bool Optimiser::optimise(RotationTranslation& opt_result, std::vector<Optimisati
   ga_rot_trans.verbose = false;
   ga_rot_trans.population = 200;
   ga_rot_trans.generation_max = 1000;
+
   ga_rot_trans.calculate_SO_total_fitness = [&](const GA_Rot_Trans_t::thisChromosomeType& X) -> double {
     return this->calculate_SO_total_fitness(X);
   };
+
   ga_rot_trans.init_genes = [&, initial_rotation_translation, rotation_increment, translation_increment](
                                 RotationTranslation& p, const std::function<double(void)>& rnd01) -> void {
     this->init_genes(p, rnd01, initial_rotation_translation, rotation_increment, translation_increment);
   };
+
   ga_rot_trans.eval_solution = [&](const RotationTranslation& rt, RotationTranslationCost& c) -> bool {
     return this->eval_solution(rt, c);
   };
+
   ga_rot_trans.mutate = [&, initial_rotation_translation, rotation_increment, translation_increment](
                             const RotationTranslation& X_base, const std::function<double(void)>& rnd01,
                             double shrink_scale) -> RotationTranslation {
     return this->mutate(X_base, rnd01, initial_rotation_translation, rotation_increment, translation_increment,
                         shrink_scale);
   };
+
   ga_rot_trans.crossover = [&](const RotationTranslation& X1, const RotationTranslation& X2,
                                const std::function<double(void)>& rnd01) { return this->crossover(X1, X2, rnd01); };
+
   ga_rot_trans.SO_report_generation =
       [&](int generation_number,
           const EA::GenerationType<RotationTranslation, RotationTranslationCost>& last_generation,
           const RotationTranslation& best_genes) -> void {
     this->SO_report_generation(generation_number, last_generation, best_genes);
   };
+
   ga_rot_trans.best_stall_max = 100;
   ga_rot_trans.average_stall_max = 100;
   ga_rot_trans.tol_stall_average = 1e-8;
