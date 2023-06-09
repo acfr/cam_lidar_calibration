@@ -424,7 +424,7 @@ namespace cam_lidar_calibration
         cv::Mat cp_trans = tmp_rot * camera_centres_.t();
         cv::Mat trans_diff = lidar_centres_.t() - cp_trans;
         cv::Mat summed_diff;
-        cv::reduce(trans_diff, summed_diff, 1, CV_REDUCE_SUM, CV_64F);
+        cv::reduce(trans_diff, summed_diff, 1, cv::ReduceTypes::REDUCE_SUM, CV_64F);
         summed_diff = summed_diff / trans_diff.cols;
         const RotationTranslation initial_rotation_translation{ best_rotation_, summed_diff.at<double>(0),
                                                                 summed_diff.at<double>(1), summed_diff.at<double>(2) };

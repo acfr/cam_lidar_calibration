@@ -57,6 +57,8 @@ namespace cam_lidar_calibration
         optimiser_ = std::make_shared<Optimiser>(i_params);
         ROS_INFO("Input parameters loaded");
 
+        flag_.reset(new std::atomic<int>(0));
+
         it_.reset(new image_transport::ImageTransport(public_nh));
         it_p_.reset(new image_transport::ImageTransport(private_nh));
 
@@ -138,10 +140,18 @@ namespace cam_lidar_calibration
 
     bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res)
     {
+        ros::Rate r(100);
         switch (req.operation)
         {
             case Optimise::Request::CAPTURE:
-                ROS_INFO("Capturing sample");
+                if (*flag_ == Optimise::Request::CAPTURE)
+                {
+                    ROS_WARN("Still working with last sample!");
+                }
+                else
+                {
+                    ROS_INFO("Capturing sample");
+                }
                 break;
             case Optimise::Request::DISCARD:
                 ROS_INFO("Discarding last sample");
@@ -154,11 +164,7 @@ namespace cam_lidar_calibration
                 break;
         }
         publishBoardPointCloud();
-        flag = req.operation;  // read flag published by rviz calibration panel
-        // Wait for operation to complete
-        while (flag == Optimise::Request::CAPTURE)
-        {
-        }
+        *flag_ = req.operation;  // read *flag_published by rviz calibration panel
         res.samples = optimiser_->samples.size();
         return true;
     }
@@ -857,13 +863,13 @@ namespace cam_lidar_calibration
         // Publish the experimental region point cloud
         bounded_cloud_pub_.publish(cloud_bounded);
 
-        if (flag == Optimise::Request::CAPTURE)
+        if (*flag_ == Optimise::Request::CAPTURE)
         {
             ROS_INFO("Processing sample");
             auto [corner_vectors, chessboard_normal] = locateChessboard(image);
             if (corner_vectors.size() == 0)
             {
-                flag = Optimise::Request::READY;
+                *flag_ = Optimise::Request::READY;
                 ROS_ERROR("Sample capture failed: can't detect chessboard in camera image");
                 ROS_INFO("Ready to capture sample");
                 return;
@@ -922,7 +928,7 @@ namespace cam_lidar_calibration
                 ROS_ERROR("RANSAC unsuccessful, discarding sample - Need more lidar points on board");
                 pc_samples_.pop_back();
                 num_samples--;
-                flag = Optimise::Request::READY;
+                *flag_ = Optimise::Request::READY;
                 ROS_INFO("Ready for capture\n");
                 return;
             }
@@ -1023,7 +1029,7 @@ namespace cam_lidar_calibration
                 ROS_ERROR("Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try capturing again");
                 pc_samples_.pop_back();
                 num_samples--;
-                flag = Optimise::Request::READY;
+                *flag_ = Optimise::Request::READY;
                 ROS_INFO("Ready for capture\n");
                 return;
             }
@@ -1081,9 +1087,9 @@ namespace cam_lidar_calibration
 
             // Push this sample to the optimiser
             optimiser_->samples.push_back(sample);
-            flag = Optimise::Request::READY;  // Reset the capture flag
+            *flag_ = Optimise::Request::READY;  // Reset the capture flag
             ROS_INFO("Ready for capture\n");
-        }  // if (flag == Optimise::Request::CAPTURE)
+        }  // if (*flag_ == Optimise::Request::CAPTURE)
     }  // End of extractRegionOfInterest
 
 // Get current date/time, format is YYYY-MM-DD-HH:mm:ss
