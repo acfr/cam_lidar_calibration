@@ -3,6 +3,8 @@
 <!-- Example: roslaunch cam_lidar_calibration assess_results.launch csv:="/home/user/data/src/cam_lidar_calibration/output/2020-06-09_18-05-53.csv" -->
 
 <launch>
+    <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${node}]: ${message}"/>
+
 	<arg name="visualise" default="false"/>	
 
 	<param name="use_sim_time" value="false" />
