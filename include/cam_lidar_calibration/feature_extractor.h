@@ -74,14 +74,12 @@ private:
   int find_octant(float x, float y, float z);
 
   std::shared_ptr<Optimiser> optimiser_;
-  initial_parameters_t i_params;
-  int cb_l, cb_b, l, b, e_l, e_b;
-  std::vector<cv::Point2f> centresquare_corner_pixels;
-  double metreperpixel_cbdiag;
+  initial_parameters_t i_params_;
+  double metreperpixel_cbdiag_;
   std::string lidar_frame_;
-  std::string save_dir, import_path;
-  int num_lowestvoq;
-  double distance_offset;
+  std::string import_path_;
+  int num_lowestvoq_;
+  double distance_offset_;
 
   int flag = 0;
   cam_lidar_calibration::boundsConfig bounds_;
@@ -94,24 +92,24 @@ private:
   std::shared_ptr<message_filters::Synchronizer<ImageLidarSyncPolicy>> image_pc_sync_;
   int queue_rate_ = 10;  // This was 5 before but I changed to 10 cause
                          // Robosense to camera A0 has big timestamp misalign
-  int num_samples = 0;
+  int num_samples_ = 0;
 
   std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> pc_samples_;
   ros::Publisher board_cloud_pub_, subtracted_cloud_pub_, experimental_region_pub_;
   ros::Publisher samples_pub_;
-  image_transport::Publisher image_publisher;
+  image_transport::Publisher image_publisher_;
   ros::ServiceServer optimise_service_;
   ros::Subscriber camera_info_sub_;
 
   boost::shared_ptr<image_transport::ImageTransport> it_;
   boost::shared_ptr<image_transport::ImageTransport> it_p_;
-  boost::shared_ptr<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>> server;
+  boost::shared_ptr<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>> server_;
 
-  std::string curdatetime;
-  std::string output_path, newdatafolder;
-  bool valid_camera_info;
-  ros::NodeHandle private_nh;
-  ros::NodeHandle public_nh;
+  std::string curdatetime_;
+  std::string newdata_folder_;
+  bool valid_camera_info_;
+  ros::NodeHandle private_nh_;
+  ros::NodeHandle public_nh_;
 
   std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> background_pc_samples_;
   double board_width_ = 0.0f;
@@ -119,7 +117,7 @@ private:
 
   int num_of_pc_frames_;
   int frames_to_capture_ = 5;
-  int num_invalid_samples = 0;
+  int num_invalid_samples_ = 0;
 
   // five consecutive frames are captured per caputre button press
   std::vector<cam_lidar_calibration::OptimisationSample> samples_;

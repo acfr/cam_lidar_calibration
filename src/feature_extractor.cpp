@@ -44,58 +44,58 @@ namespace cam_lidar_calibration
 FeatureExtractor::FeatureExtractor()
 {
   // Creating ROS nodehandle
-  private_nh = ros::NodeHandle("~");
-  public_nh = ros::NodeHandle();
+  private_nh_ = ros::NodeHandle("~");
+  public_nh_ = ros::NodeHandle();
   ros::NodeHandle pnh = ros::NodeHandle("~");  // getMTPrivateNodeHandle();
-  private_nh.getParam("import_path", import_path);
-  private_nh.getParam("import_samples", import_samples);
-  private_nh.getParam("num_lowestvoq", num_lowestvoq);
-  private_nh.getParam("distance_offset_mm", distance_offset);
-  loadParams(public_nh, i_params);
-  optimiser_ = std::make_shared<Optimiser>(i_params);
+  private_nh_.getParam("import_path", import_path_);
+  private_nh_.getParam("import_samples", import_samples);
+  private_nh_.getParam("num_lowestvoq", num_lowestvoq_);
+  private_nh_.getParam("distance_offset_mm", distance_offset_);
+  loadParams(public_nh_, i_params_);
+  optimiser_ = std::make_shared<Optimiser>(i_params_);
   ROS_INFO("Input parameters loaded");
 
-  it_.reset(new image_transport::ImageTransport(public_nh));
-  it_p_.reset(new image_transport::ImageTransport(private_nh));
+  it_.reset(new image_transport::ImageTransport(public_nh_));
+  it_p_.reset(new image_transport::ImageTransport(private_nh_));
 
   // Dynamic reconfigure gui to set the experimental region bounds
-  server = boost::make_shared<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>>(pnh);
+  server_ = boost::make_shared<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>>(pnh);
   dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>::CallbackType f;
   f = boost::bind(&FeatureExtractor::boundsCB, this, _1, _2);
-  server->setCallback(f);
+  server_->setCallback(f);
 
   // Synchronizer to get synchronized camera-lidar scan pairs
-  image_sub_ = std::make_shared<image_sub_type>(private_nh, i_params.camera_topic, queue_rate_);
-  pc_sub_ = std::make_shared<pc_sub_type>(private_nh, i_params.lidar_topic, queue_rate_);
+  image_sub_ = std::make_shared<image_sub_type>(private_nh_, i_params_.camera_topic, queue_rate_);
+  pc_sub_ = std::make_shared<pc_sub_type>(private_nh_, i_params_.lidar_topic, queue_rate_);
 
   image_pc_sync_ = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(
       ImageLidarSyncPolicy(queue_rate_), *image_sub_, *pc_sub_);
   image_pc_sync_->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
 
-  board_cloud_pub_ = private_nh.advertise<PointCloud>("chessboard", 1);
-  subtracted_cloud_pub_ = private_nh.advertise<PointCloud>("subtracted_pc", 1);
+  board_cloud_pub_ = private_nh_.advertise<PointCloud>("chessboard", 1);
+  subtracted_cloud_pub_ = private_nh_.advertise<PointCloud>("subtracted_pc", 1);
 
-  experimental_region_pub_ = private_nh.advertise<PointCloud>("experimental_region", 10);
-  optimise_service_ = public_nh.advertiseService("optimiser", &FeatureExtractor::serviceCB, this);
-  samples_pub_ = private_nh.advertise<visualization_msgs::MarkerArray>("collected_samples", 0);
-  image_publisher = it_->advertise("camera_features", 1);
+  experimental_region_pub_ = private_nh_.advertise<PointCloud>("experimental_region", 10);
+  optimise_service_ = public_nh_.advertiseService("optimiser", &FeatureExtractor::serviceCB, this);
+  samples_pub_ = private_nh_.advertise<visualization_msgs::MarkerArray>("collected_samples", 0);
+  image_publisher_ = it_->advertise("camera_features", 1);
 
-  valid_camera_info = false;
-  i_params.cameramat = cv::Mat::zeros(3, 3, CV_64F);
-  i_params.distcoeff = cv::Mat::eye(1, 4, CV_64F);
-  camera_info_sub_ = public_nh.subscribe(i_params.camera_info, 20, &FeatureExtractor::callback_camerainfo, this);
+  valid_camera_info_ = false;
+  i_params_.cameramat = cv::Mat::zeros(3, 3, CV_64F);
+  i_params_.distcoeff = cv::Mat::eye(1, 4, CV_64F);
+  camera_info_sub_ = public_nh_.subscribe(i_params_.camera_info, 20, &FeatureExtractor::callback_camerainfo, this);
 
   // Create folder for output if it does not exist
-  curdatetime = getDateTime();
+  curdatetime_ = getDateTime();
 
   // Specify folder for saving samples
   if (import_samples)
   {
     std::string import_dir;
-    const size_t last_slash_idx = import_path.rfind('/');
+    const size_t last_slash_idx = import_path_.rfind('/');
     if (std::string::npos != last_slash_idx)
     {
-      newdatafolder = import_path.substr(0, last_slash_idx);
+      newdata_folder_ = import_path_.substr(0, last_slash_idx);
     }
   }
   else
@@ -106,7 +106,7 @@ FeatureExtractor::FeatureExtractor()
     {
       ROS_INFO_STREAM("Data save folder created at " << data_dir);
     }
-    newdatafolder = data_dir + "/" + curdatetime;
+    newdata_folder_ = data_dir + "/" + curdatetime_;
   }
 
   ROS_INFO("Finished init cam_lidar_calibration");
@@ -114,34 +114,34 @@ FeatureExtractor::FeatureExtractor()
 
 void FeatureExtractor::callback_camerainfo(const sensor_msgs::CameraInfo::ConstPtr& msg)
 {
-  i_params.cameramat.at<double>(0, 0) = msg->K[0];
-  i_params.cameramat.at<double>(0, 2) = msg->K[2];
-  i_params.cameramat.at<double>(1, 1) = msg->K[4];
-  i_params.cameramat.at<double>(1, 2) = msg->K[5];
-  i_params.cameramat.at<double>(2, 2) = 1;
+  i_params_.cameramat.at<double>(0, 0) = msg->K[0];
+  i_params_.cameramat.at<double>(0, 2) = msg->K[2];
+  i_params_.cameramat.at<double>(1, 1) = msg->K[4];
+  i_params_.cameramat.at<double>(1, 2) = msg->K[5];
+  i_params_.cameramat.at<double>(2, 2) = 1;
 
-  i_params.distcoeff.at<double>(0) = msg->D[0];
-  i_params.distcoeff.at<double>(1) = msg->D[1];
-  i_params.distcoeff.at<double>(2) = msg->D[2];
-  i_params.distcoeff.at<double>(3) = msg->D[3];
+  i_params_.distcoeff.at<double>(0) = msg->D[0];
+  i_params_.distcoeff.at<double>(1) = msg->D[1];
+  i_params_.distcoeff.at<double>(2) = msg->D[2];
+  i_params_.distcoeff.at<double>(3) = msg->D[3];
 
-  i_params.image_size = std::make_pair(msg->width, msg->height);
+  i_params_.image_size = std::make_pair(msg->width, msg->height);
 
   // Fisheye/equidistant
   if (msg->distortion_model == "equidistant")
   {
-    i_params.fisheye_model = true;
+    i_params_.fisheye_model = true;
     // Pinhole
   }
   else if (msg->distortion_model == "rational_polynomial" || msg->distortion_model == "plumb_bob")
   {
-    i_params.fisheye_model = false;
+    i_params_.fisheye_model = false;
   }
   else
   {
     ROS_FATAL_STREAM("Camera model " << msg->distortion_model << " not supported");
   }
-  valid_camera_info = true;
+  valid_camera_info_ = true;
 }
 
 bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res)
@@ -160,7 +160,7 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
       ROS_INFO("Discarding last sample");
       if (!optimiser_->samples.empty())
       {
-        num_samples--;
+        num_samples_--;
         optimiser_->samples.pop_back();
         pc_samples_.pop_back();
       }
@@ -187,12 +187,12 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
 {
   ROS_INFO("Starting FeatureExtractor::optimise");
 
-  std::string curdatetime = getDateTime();
+  std::string curdatetime_ = getDateTime();
 
   if (import_samples)
   {
-    ROS_INFO_STREAM("Reading file: " << import_path);
-    std::ifstream read_samples(import_path);
+    ROS_INFO_STREAM("Reading file: " << import_path_);
+    std::ifstream read_samples(import_path_);
 
     optimiser_->samples.resize(0);
 
@@ -264,7 +264,7 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
   }
   else
   {
-    std::string savesamplespath = newdatafolder + "/poses.csv";
+    std::string savesamplespath = newdata_folder_ + "/poses.csv";
     std::ofstream save_samples;
     save_samples.open(savesamplespath, std::ios_base::out | std::ios_base::trunc);
 
@@ -356,7 +356,7 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
   std::srand(std::time(0));
   std::random_shuffle(optimiser_->sets.begin(), optimiser_->sets.end());
 
-  // Generate the top num_lowestvoq sets of lowest VOQ scores
+  // Generate the top num_lowestvoq_ sets of lowest VOQ scores
   int num_assessed = 0;
   std::vector<SetAssess> calib_list;
 
@@ -404,10 +404,10 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
     // calib_list is a list of size 50 that maintains the lowest VOQ values
     // by keeping track of its max element, and replacing that with the next
     // lowest VOQ.
-    if (calib_list.size() < (std::size_t)num_lowestvoq)
+    if (calib_list.size() < (std::size_t)num_lowestvoq_)
     {
       calib_list.push_back(new_set);
-      if (calib_list.size() == (std::size_t)num_lowestvoq)
+      if (calib_list.size() == (std::size_t)num_lowestvoq_)
       {
         // sort such that the last element is the max
         std::sort(calib_list.begin(), calib_list.end(), compare_voq);
@@ -437,7 +437,7 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
   ROS_INFO_STREAM("Time taken: " << timer_assess.toc() << "s ");
 
   std::ofstream output_csv;
-  std::string outpath = newdatafolder + "/calibration_" + curdatetime + ".csv";
+  std::string outpath = newdata_folder_ + "/calibration_" + curdatetime_ + ".csv";
   ROS_INFO_STREAM("Calibration results will be saved at: " << outpath);
   output_csv.open(outpath, std::ios_base::out | std::ios_base::trunc);
   output_csv << "roll,pitch,yaw,x,y,z\n";
@@ -456,7 +456,7 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
     timer_set.tic();
 
     printf(" %2u/%2u ", i + 1, optimiser_->top_sets.size());
-    success = optimiser_->optimise(opt_result, optimiser_->top_sets[i], i_params.cameramat, i_params.distcoeff);
+    success = optimiser_->optimise(opt_result, optimiser_->top_sets[i], i_params_.cameramat, i_params_.distcoeff);
 
     // Save extrinsic params to csv for post processing
     if (success)
@@ -594,64 +594,65 @@ auto FeatureExtractor::chessboardProjection(const std::vector<cv::Point2d>& corn
 
   // Location of board frame origin from the bottom left inner corner of the
   // chessboard
-  cv::Point3d chessboard_bleft_corner((i_params.chessboard_pattern_size.width - 1) * i_params.square_length / 2,
-                                      (i_params.chessboard_pattern_size.height - 1) * i_params.square_length / 2, 0);
+  cv::Point3d chessboard_bleft_corner((i_params_.chessboard_pattern_size.width - 1) * i_params_.square_length / 2,
+                                      (i_params_.chessboard_pattern_size.height - 1) * i_params_.square_length / 2, 0);
 
   std::vector<cv::Point3d> corners_3d;
-  for (int y = 0; y < i_params.chessboard_pattern_size.height; y++)
+  for (int y = 0; y < i_params_.chessboard_pattern_size.height; y++)
   {
-    for (int x = 0; x < i_params.chessboard_pattern_size.width; x++)
+    for (int x = 0; x < i_params_.chessboard_pattern_size.width; x++)
     {
-      corners_3d.push_back(cv::Point3d(x, y, 0) * i_params.square_length - chessboard_bleft_corner);
+      corners_3d.push_back(cv::Point3d(x, y, 0) * i_params_.square_length - chessboard_bleft_corner);
     }
   }
 
   // chessboard corners, middle square corners, board corners and centre
   std::vector<cv::Point3d> board_corners_3d;
   // Board corner coordinates from the centre of the chessboard
-  board_corners_3d.push_back(cv::Point3d((board_width_ - i_params.cb_translation_error.x) / 2.0,
-                                         (board_height_ - i_params.cb_translation_error.y) / 2.0, 0.0));
+  board_corners_3d.push_back(cv::Point3d((board_width_ - i_params_.cb_translation_error.x) / 2.0,
+                                         (board_height_ - i_params_.cb_translation_error.y) / 2.0, 0.0));
 
-  board_corners_3d.push_back(cv::Point3d(-(board_width_ + i_params.cb_translation_error.x) / 2.0,
-                                         (board_height_ - i_params.cb_translation_error.y) / 2.0, 0.0));
+  board_corners_3d.push_back(cv::Point3d(-(board_width_ + i_params_.cb_translation_error.x) / 2.0,
+                                         (board_height_ - i_params_.cb_translation_error.y) / 2.0, 0.0));
 
-  board_corners_3d.push_back(cv::Point3d(-(board_width_ + i_params.cb_translation_error.x) / 2.0,
-                                         -(board_height_ + i_params.cb_translation_error.y) / 2.0, 0.0));
+  board_corners_3d.push_back(cv::Point3d(-(board_width_ + i_params_.cb_translation_error.x) / 2.0,
+                                         -(board_height_ + i_params_.cb_translation_error.y) / 2.0, 0.0));
 
-  board_corners_3d.push_back(cv::Point3d((board_width_ - i_params.cb_translation_error.x) / 2.0,
-                                         -(board_height_ + i_params.cb_translation_error.y) / 2.0, 0.0));
+  board_corners_3d.push_back(cv::Point3d((board_width_ - i_params_.cb_translation_error.x) / 2.0,
+                                         -(board_height_ + i_params_.cb_translation_error.y) / 2.0, 0.0));
   // Board centre coordinates from the centre of the chessboard (due to
   // incorrect placement of chessboard on board)
   board_corners_3d.push_back(
-      cv::Point3d(-i_params.cb_translation_error.x / 2.0, -i_params.cb_translation_error.y / 2.0, 0.0));
+      cv::Point3d(-i_params_.cb_translation_error.x / 2.0, -i_params_.cb_translation_error.y / 2.0, 0.0));
 
   std::vector<cv::Point2d> inner_cbcorner_pixels, board_image_pixels;
   cv::Mat rvec(3, 3, cv::DataType<double>::type);  // Initialization for pinhole
                                                    // and fisheye cameras
   cv::Mat tvec(3, 1, cv::DataType<double>::type);
 
-  if (valid_camera_info)
+  if (valid_camera_info_)
   {
-    if (i_params.fisheye_model)
+    if (i_params_.fisheye_model)
     {
       // Undistort the image by applying the fisheye intrinsic parameters
       // the final input param is the camera matrix in the new or rectified
       // coordinate frame. We put this to be the same as i_params_.cameramat or
       // else it will be set to empty matrix by default.
       std::vector<cv::Point2d> corners_undistorted;
-      cv::fisheye::undistortPoints(corners, corners_undistorted, i_params.cameramat, i_params.distcoeff,
-                                   i_params.cameramat);
-      cv::solvePnP(corners_3d, corners_undistorted, i_params.cameramat, cv::noArray(), rvec, tvec);
-      cv::fisheye::projectPoints(corners_3d, inner_cbcorner_pixels, rvec, tvec, i_params.cameramat, i_params.distcoeff);
-      cv::fisheye::projectPoints(board_corners_3d, board_image_pixels, rvec, tvec, i_params.cameramat,
-                                 i_params.distcoeff);
+      cv::fisheye::undistortPoints(corners, corners_undistorted, i_params_.cameramat, i_params_.distcoeff,
+                                   i_params_.cameramat);
+      cv::solvePnP(corners_3d, corners_undistorted, i_params_.cameramat, cv::noArray(), rvec, tvec);
+      cv::fisheye::projectPoints(corners_3d, inner_cbcorner_pixels, rvec, tvec, i_params_.cameramat,
+                                 i_params_.distcoeff);
+      cv::fisheye::projectPoints(board_corners_3d, board_image_pixels, rvec, tvec, i_params_.cameramat,
+                                 i_params_.distcoeff);
     }
     else
     {
       // Pinhole model
-      cv::solvePnP(corners_3d, corners, i_params.cameramat, i_params.distcoeff, rvec, tvec);
-      cv::projectPoints(corners_3d, rvec, tvec, i_params.cameramat, i_params.distcoeff, inner_cbcorner_pixels);
-      cv::projectPoints(board_corners_3d, rvec, tvec, i_params.cameramat, i_params.distcoeff, board_image_pixels);
+      cv::solvePnP(corners_3d, corners, i_params_.cameramat, i_params_.distcoeff, rvec, tvec);
+      cv::projectPoints(corners_3d, rvec, tvec, i_params_.cameramat, i_params_.distcoeff, inner_cbcorner_pixels);
+      cv::projectPoints(board_corners_3d, rvec, tvec, i_params_.cameramat, i_params_.distcoeff, board_image_pixels);
     }
   }
   else
@@ -695,7 +696,7 @@ auto FeatureExtractor::chessboardProjection(const std::vector<cv::Point2d>& corn
   double len_diagonal =
       sqrt(pow(corners_3d.front().x - corners_3d.back().x, 2) + (pow(corners_3d.front().y - corners_3d.back().y, 2)));
 
-  metreperpixel_cbdiag = len_diagonal / (1000 * pixdiagonal);
+  metreperpixel_cbdiag_ = len_diagonal / (1000 * pixdiagonal);
 
   // Return all the necessary coefficients
   return std::make_tuple(rvec, tvec, board_corners_3d);
@@ -713,7 +714,7 @@ FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
   std::vector<cv::Point2f> cornersf;
   std::vector<cv::Point2d> corners;
   // Find chessboard pattern in the image
-  bool pattern_found = findChessboardCorners(gray, i_params.chessboard_pattern_size, cornersf,
+  bool pattern_found = findChessboardCorners(gray, i_params_.chessboard_pattern_size, cornersf,
                                              cv::CALIB_CB_ADAPTIVE_THRESH + cv::CALIB_CB_NORMALIZE_IMAGE);
 
   if (!pattern_found)
@@ -751,7 +752,7 @@ FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
 
   // Publish the image with all the features marked in it
   ROS_INFO("Publishing chessboard image");
-  image_publisher.publish(cv_ptr->toImageMsg());
+  image_publisher_.publish(cv_ptr->toImageMsg());
   return std::make_tuple(corner_vectors, chessboard_normal);
 }
 
@@ -849,7 +850,7 @@ FeatureExtractor::findEdges(const PointCloud::Ptr& edge_pair_cloud)
 
 void FeatureExtractor::distoffset_passthrough(const PointCloud::ConstPtr& input_pc, PointCloud::Ptr& output_pc)
 {
-  if (distance_offset != 0)
+  if (distance_offset_ != 0)
   {
     PointCloud::Ptr distoffset_pcl(new PointCloud);
     distoffset_pcl->header = input_pc->header;
@@ -889,7 +890,7 @@ void FeatureExtractor::distoffset_passthrough(const PointCloud::ConstPtr& input_
       }
 
       // add distance offset (convert mm to metres)
-      float r_do = r + distance_offset / 1000;
+      float r_do = r + distance_offset_ / 1000;
 
       // convert back to cartesian
       pcl::PointXYZIR point;
@@ -913,14 +914,14 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
                                                const PointCloud::ConstPtr& pointcloud)
 {
   // Check if we have deduced the lidar ring count
-  if (i_params.lidar_ring_count == 0)
+  if (i_params_.lidar_ring_count == 0)
   {
     // pcl::getMinMax3D only works on x,y,z
     for (const auto& p : pointcloud->points)
     {
-      if (p.ring + 1 > i_params.lidar_ring_count)
+      if (p.ring + 1 > i_params_.lidar_ring_count)
       {
-        i_params.lidar_ring_count = p.ring + 1;
+        i_params_.lidar_ring_count = p.ring + 1;
       }
     }
     lidar_frame_ = pointcloud->header.frame_id;
@@ -1000,7 +1001,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
       else  // For every other sample get the dimensions and compare to the first one
       {
         cam_lidar_calibration::OptimisationSample sample;
-        num_samples++;
+        num_samples_++;
 
         double sum_w0 = 0.0f;
         double sum_w1 = 0.0f;
@@ -1149,9 +1150,9 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         sample.heights = { avg_h0, avg_h1 };
         sample.distance_from_origin = distance;
         sample.pixeltometre = sum_px_to_metre / samples_.size();
-        sample.sample_num = num_samples;
+        sample.sample_num = num_samples_;
 
-        printf("\n--- Sample %d ---\n", num_samples);
+        printf("\n--- Sample %d ---\n", num_samples_);
         printf("Measured board has: dimensions = %6.5f x %6.5f mm; area = %6.5f"
                "m^2\n",
                (avg_w0 + avg_w1) / 2, (avg_h0 + avg_h1) / 2, gt_area);
@@ -1196,23 +1197,23 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
 
         // Save image
-        if (boost::filesystem::create_directory(newdatafolder))
+        if (boost::filesystem::create_directory(newdata_folder_))
         {
-          boost::filesystem::create_directory(newdatafolder + "/images");
-          boost::filesystem::create_directory(newdatafolder + "/pcd");
-          ROS_INFO_STREAM("Save data folder created at " << newdatafolder);
+          boost::filesystem::create_directory(newdata_folder_ + "/images");
+          boost::filesystem::create_directory(newdata_folder_ + "/pcd");
+          ROS_INFO_STREAM("Save data folder created at " << newdata_folder_);
         }
 
-        std::string img_filepath = newdatafolder + "/images/pose" + std::to_string(num_samples) + ".png";
-        std::string target_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples) + "_target.pcd";
-        std::string full_pcd_filepath = newdatafolder + "/pcd/pose" + std::to_string(num_samples) + "_full.pcd";
+        std::string img_filepath = newdata_folder_ + "/images/pose" + std::to_string(num_samples_) + ".png";
+        std::string target_pcd_filepath = newdata_folder_ + "/pcd/pose" + std::to_string(num_samples_) + "_target.pcd";
+        std::string full_pcd_filepath = newdata_folder_ + "/pcd/pose" + std::to_string(num_samples_) + "_full.pcd";
 
         ROS_ASSERT(cv::imwrite(img_filepath, cv_ptr->image));
         pcl::io::savePCDFileASCII(target_pcd_filepath, *cloud_filtered);
         pcl::io::savePCDFileASCII(full_pcd_filepath, *pointcloud);
         ROS_INFO_STREAM("Image and pcd file saved");
 
-        if (num_samples == 1)
+        if (num_samples_ == 1)
         {
           // Check if save_dir has camera_info topic saved
           std::string pkg_path = ros::package::getPath("cam_lidar_calibration");
@@ -1221,25 +1222,25 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
           std::string camera_info_path = pkg_path + "/cfg/camera_info.yaml";
           ROS_INFO_STREAM("Camera_info saved at: " << camera_info_path);
           camera_info_file.open(camera_info_path, std::ios_base::out | std::ios_base::trunc);
-          std::string dist_model = (i_params.fisheye_model) ? "fisheye" : "non-fisheye";
+          std::string dist_model = (i_params_.fisheye_model) ? "fisheye" : "non-fisheye";
           camera_info_file << "distortion_model: \"" << dist_model << "\"\n";
-          camera_info_file << "width: " << i_params.image_size.first << "\n";
-          camera_info_file << "height: " << i_params.image_size.second << "\n";
-          camera_info_file << "D: [" << i_params.distcoeff.at<double>(0) << "," << i_params.distcoeff.at<double>(1)
-                           << "," << i_params.distcoeff.at<double>(2) << "," << i_params.distcoeff.at<double>(3)
+          camera_info_file << "width: " << i_params_.image_size.first << "\n";
+          camera_info_file << "height: " << i_params_.image_size.second << "\n";
+          camera_info_file << "D: [" << i_params_.distcoeff.at<double>(0) << "," << i_params_.distcoeff.at<double>(1)
+                           << "," << i_params_.distcoeff.at<double>(2) << "," << i_params_.distcoeff.at<double>(3)
                            << "]\n";
-          camera_info_file << "K: [" << i_params.cameramat.at<double>(0, 0) << ",0.0"
-                           << "," << i_params.cameramat.at<double>(0, 2) << ",0.0"
-                           << "," << i_params.cameramat.at<double>(1, 1) << "," << i_params.cameramat.at<double>(1, 2)
+          camera_info_file << "K: [" << i_params_.cameramat.at<double>(0, 0) << ",0.0"
+                           << "," << i_params_.cameramat.at<double>(0, 2) << ",0.0"
+                           << "," << i_params_.cameramat.at<double>(1, 1) << "," << i_params_.cameramat.at<double>(1, 2)
                            << ",0.0,0.0"
-                           << "," << i_params.cameramat.at<double>(2, 2) << "]\n";
+                           << "," << i_params_.cameramat.at<double>(2, 2) << "]\n";
           camera_info_file.close();
         }
       }
 
       flag = Optimise::Request::READY;
       num_of_pc_frames_ = 0;
-      num_invalid_samples = 0;
+      num_invalid_samples_ = 0;
       samples_.clear();
       ROS_INFO("Ready to capture sample");
       return;
@@ -1261,7 +1262,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
       corner_vectors.pop_back();
       sample.camera_corners = corner_vectors;
       sample.camera_normal = cv::Point3d(chessboard_normal);
-      sample.pixeltometre = metreperpixel_cbdiag;
+      sample.pixeltometre = metreperpixel_cbdiag_;
 
       // FIND THE MAX AND MIN POINTS IN EVERY RING CORRESPONDING TO THE BOARD
       auto [cloud_projected, lidar_normal] = extractBoard(cloud_filtered, sample);
@@ -1275,7 +1276,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
       // First: Sort out the points in the point cloud according to their ring
       // numbers
-      std::vector<PointCloud> ring_pointclouds(i_params.lidar_ring_count);
+      std::vector<PointCloud> ring_pointclouds(i_params_.lidar_ring_count);
 
       for (const auto& point : cloud_projected->points)
       {
@@ -1404,10 +1405,10 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         if ((abs(w0 - board_width_) > board_width_ * 0.1) | (abs(w1 - board_width_) > board_width_ * 0.1) |
             (abs(h0 - board_height_) > board_height_ * 0.1) | (abs(h1 - board_height_) > board_height_ * 0.1))
         {
-          ++num_invalid_samples;
+          ++num_invalid_samples_;
           ROS_INFO("Not a valid sample\n");
 
-          if (num_invalid_samples > 5)
+          if (num_invalid_samples_ > 5)
           {
             ROS_ERROR("Please try a different pose");
             flag = Optimise::Request::READY;
@@ -1417,7 +1418,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         }
         else
         {
-          num_invalid_samples = 0;
+          num_invalid_samples_ = 0;
           samples_.push_back(sample);
           pc_samples_.push_back(cloud_projected);
           num_of_pc_frames_++;  // increment the counter

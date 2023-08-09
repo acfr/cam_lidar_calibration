@@ -164,8 +164,7 @@ Visualization Manager:
       Enabled: true
       Marker Topic: /feature_extraction/collected_samples
       Name: MarkerArray
-      Namespaces:
-        {}
+      Namespaces: {}
       Queue Size: 100
       Value: true
     - Class: rviz/Axes

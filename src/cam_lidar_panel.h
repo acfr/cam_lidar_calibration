@@ -48,7 +48,7 @@ protected Q_SLOTS:
 protected:
   // The ROS node handle.
   ros::NodeHandle nh_;
-  ros::NodeHandle private_nh_;
+  ros::NodeHandle private_nh__;
   bool import_samples_;
   ros::ServiceClient optimise_client_;
   ActionClient action_client_;

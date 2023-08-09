@@ -14,12 +14,12 @@ feature_extraction:
   k: 50
   z: 1
   voxel_res: 0.4
-  
+
 # Properties of chessboard calibration target
 chessboard:
   pattern_size:
     height: 7
-    width: 5  
+    width: 5
   square_length: 95
   board_dimension:
     width: 610
