@@ -15,6 +15,6 @@ struct PointXYZIR
 }  // namespace pcl
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZIR, (float, x, x)(float, y, y)(float, z, z)(float, intensity,
-                                                                                      intensity)(uint8_t, ring, ring))
+                                                                                      intensity)(uint16_t, ring, ring))
 
 #endif

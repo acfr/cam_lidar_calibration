@@ -25,7 +25,7 @@ This package estimates the calibration parameters that transforms the camera fra
 
 Other changes
 - Visualise Results script takes care of angle wrapping to stop sudden angle sign fluctuations at +/-2Pi
-- Pre-commit is set up
+- Pre-commit was set up
 - Enforce Clang to format all the files appropriately, was hard to read and needed consistency very badly.
 
 # 1. Getting started
@@ -36,7 +36,7 @@ This package has only been tested in ROS Melodic.
 ### Local ROS
 1. Clone the repository in your `catkin_ws/src/` folder
 ```
-git clone -c http.sslverify=false https://github.com/acfr/cam_lidar_calibration
+git clone -c http.sslverify=false -b calib-v2 https://github.com/acfr/cam_lidar_calibration
 ```
 2. Download ros and python dependencies
 ```
@@ -52,7 +52,7 @@ source ~/catkin_ws/devel/setup.bash
 ### Docker
 1. Clone the repository in your `catkin_ws/src/` folder
 ```
-git clone -c http.sslverify=false https://github.com/acfr/cam_lidar_calibration
+git clone -c http.sslverify=false -b calib-v2 https://github.com/acfr/cam_lidar_calibration
 ```
 2. Run the docker image (which will be pulled from ockerhub). If your computer has a Nvidia GPU, set the cuda flag `--cuda on`. If you do not have one, set `--cuda off`.
 
@@ -70,6 +70,7 @@ sudo chown $USER:$GROUP *
 ```
 
 ## 1.2 Quick start
+
 You can verify that this repository runs successfully by running this package on our provided quick-start data. If you are using docker, these instructions should be run inside the container.
 
 **1. Run the calibration process**
@@ -153,7 +154,7 @@ Make sure to change the image topic to your camera image topic in order to see t
 
 ### 2. Scan a static scene without the chessboard
 
-Using the rqt_reconfigure window, modify the values of the x,y and z axes limits to such that it only shows a scene where there are no moving subjects in the scene. For example, we work in a big lab where there is constant movement of people. Using the rqt_reconfigure we are able to isolate a region of interest in in our point cloud. Once you are happy with your static scene press 'Capture Background'. Once the background scene is captured, this package will perform background subtraction on every loop to automatically isolate new items in the scene.
+Using the rqt_reconfigure window, modify the values of the x,y and z axes limits to such that it only shows a scene where there are no moving subjects in the scene. For example, we work in a big lab where there is constant movement of people. Using the rqt_reconfigure we are able to isolate a region of interest in in our point cloud. Once you are happy with your static scene press 'Capture Background'. Once the background scene is captured, this package will perform background subtraction in every frame to automatically isolate new items in the scene.
 
 ### 3. First sample of the chessboard
 
@@ -164,7 +165,7 @@ Press the 'Capture Sample' button. Make sure nothing else apart from the board a
 Make sure that the chessboard is correctly outlined with a low board dimension error. If it isn't, then 'Discard Sample' and click 'Capture Sample' again (or move the board and capture again).
 
 
-**Board errors (in the terminal window)**: Try to get a board dimension error as close to zero as possible (errors less than 30mm are acceptable). If the board error is too high, then try again in a different position or see below for potential fixes.
+**Board errors (in the terminal window)**: Try to get a board dimension error as close to zero as possible (errors less than 30mm are acceptable). If the board dimension error is too high, then try again in a different position or see below for potential fixes.
 
 - High board errors can be caused by the chessboard being too close or too far from the lidar. So we recommend moving it a bit closer/further.
 
@@ -180,11 +181,11 @@ Make sure that the chessboard is correctly outlined with a low board dimension e
 
 ### 4. Subsequent samples of the chessboard
 
-For every other capture, place the chessboard in different configurations and positions and take as many samples as you need. Again, before capturing the sample make sure to leave the scene after placing the board.
+For every other capture, place the chessboard in different configurations and positions and take as many samples as you need. Before capturing the sample make sure you or whoever is moving the board is not in the scene after placing the board in its new pose.
 
 You can always discard the last captured sample by pressing 'Discard Sample' button if the board dimension error is not low.
 
-**Number and variation of poses**: We recommend that you capture at least 20 poses (more is better) with at least a 1-2m distance range (from lidar centre) between closest and farthest poses. Below lists some guidelines.
+**Number and variation of poses**: We recommend that you capture at least 10-20 poses with at least a 1-2m distance range (from lidar centre) between closest and farthest poses. Below lists some guidelines.
 
 - Spread the poses out in the calibration range, covering the width of the image field of view. For our specific VLP-16 and Baraja Spectrum Scan lidars, we had a range of 1.7m - 4m and 2.1m - 5m respectively.
 

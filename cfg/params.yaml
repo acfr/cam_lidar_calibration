@@ -1,7 +1,7 @@
 # Topics
 camera_topic: "/image"
 camera_info: "/sekonix_camera/port_a_cam_1/camera_info"
-lidar_topic: "/os_cloud_node/points"
+lidar_topic: "/ouster/points"
 
 # Dynamic rqt_reconfigure default bounds
 feature_extraction:
@@ -20,10 +20,10 @@ chessboard:
   pattern_size:
     height: 7
     width: 5
-  square_length: 95
+  square_length: 105
   board_dimension:
-    width: 610
-    height: 850
+    width: 700.5
+    height: 1000
   translation_error:
     x: 2
-    y: 0
+    y: 2
