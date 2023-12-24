@@ -55,7 +55,8 @@ then
 else
 	ENVS="--env=XAUTHORITY=/home/$(id -un)/.Xauthority
 		  --env=ROS_IP=127.0.0.1
-		  --env=DISPLAY=$DISPLAY"
+		  --env=DISPLAY=$DISPLAY
+      --device=/dev/dri:/dev/dri"
 	echo "Running docker for cpu"
 fi
 

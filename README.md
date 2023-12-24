@@ -206,12 +206,6 @@ Note that if you do not click this button, the poses will not be properly saved.
 The poses are saved (png, pcd, poses.csv) in the `($cam_lidar_calibration)/data/YYYY-MM-DD_HH-MM-SS/` folder for the reprojection assessment phase (and also if you wish to re-calibrate with the same data). The optimisation process will generate an output file `calibration_YYYY-MM-DD_HH-MM-SS.csv` in the same folder which stores the results of the best sets.
 
 
-<p  align="center">
-    <img width="70%" src="img/isolatechessboard.png">
-    <br>
-    <em><b>Left:</b> Unfiltered pointcloud. <b>Right:</b> isolated chessboard pointcloud after setting the values in the rqt_reconfigure. For each chessboard pose, depending on your lidar, you might have to continually tweak the rqt_reconfigure values.</em>
-</p>
-
 ## 2.4 Estimating parameters and assessing reprojection error
 
 After you obtain the calibration csv output file, copy-paste the absolute path of the calibration output file after `csv:=` in the command below with double quotation marks. A histogram with a gaussian fitting should appear. You can choose to visualise a sample if you set the visualise flag. If you wish to visualise a different sample, you can change the particular sample in the `assess_results.launch` file. The reprojection results are shown in the terminal window.
