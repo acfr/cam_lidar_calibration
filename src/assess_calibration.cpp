@@ -1,3 +1,20 @@
+/*
+ * Copyright 2023 Australian Centre For Robotics
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * 
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * 
+ * Author: Darren Tsai
+ */
+
 #include <iostream>
 #include <string>
 #include <numeric>
@@ -48,7 +65,7 @@ struct OptimisationSample
 
 struct Rotation
 {
-    double roll;  // Rotation optimization variables
+    double roll;   * Rotation optimization variables
     double pitch;
     double yaw;
     operator const std::string() const
@@ -62,9 +79,9 @@ struct Rotation
         using std::cos;
         using std::sin;
 
-        // Calculate rotation about x axis
+         * Calculate rotation about x axis
         cv::Mat R_x = (Mat_<double>(3, 3) << 1, 0, 0, 0, cos(roll), -sin(roll), 0, sin(roll), cos(roll));
-        // Calculate rotation about y axis
+         * Calculate rotation about y axis
         cv::Mat R_y = (Mat_<double>(3, 3) << cos(pitch), 0, sin(pitch), 0, 1, 0, -sin(pitch), 0, cos(pitch));
         // Calculate rotation about z axis
         cv::Mat R_z = (Mat_<double>(3, 3) << cos(yaw), -sin(yaw), 0, sin(yaw), cos(yaw), 0, 0, 0, 1);

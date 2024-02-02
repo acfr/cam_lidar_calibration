@@ -2,9 +2,9 @@
   <name>cam_lidar_calibration</name>
   <version>0.0.1</version>
   <description>camera lidar calibration</description>
-  <maintainer email="jtsa5115@uni.sydney.edu.au">Darren Tsai</maintainer>
-  <author>ACFR-ITS</author>
-  <license>BSD</license>
+  <maintainer email="j.justin@acfr.usyd.edu.au">Jerome Justin</maintainer>
+  <author>Darrent Tsai </author>
+  <license>Apache License 2.0</license>
 
   <buildtool_depend>catkin</buildtool_depend>
 
@@ -31,5 +31,3 @@
     <rviz plugin="${prefix}/plugin_description.xml"/>
 </export>
 </package>
-
-
