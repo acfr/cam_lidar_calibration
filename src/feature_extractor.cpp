@@ -2,16 +2,16 @@
  * Copyright 2023 Australian Centre For Robotics
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * 
+ *
  * You may obtain a copy of the License at
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * Author: Darren Tsai
  */
 
@@ -1088,12 +1088,12 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
         cv::Point3d avg_camera_c0 = cv::Point3d(sum_camera_c0.x / samples_.size(), sum_camera_c0.y / samples_.size(),
                                                 sum_camera_c0.z / samples_.size());
-        cv::Point3d avg_camera_c1 = cv::Point3d(sum_camera_c0.x / samples_.size(), sum_camera_c0.y / samples_.size(),
-                                                sum_camera_c0.z / samples_.size());
-        cv::Point3d avg_camera_c2 = cv::Point3d(sum_camera_c0.x / samples_.size(), sum_camera_c0.y / samples_.size(),
-                                                sum_camera_c0.z / samples_.size());
-        cv::Point3d avg_camera_c3 = cv::Point3d(sum_camera_c0.x / samples_.size(), sum_camera_c0.y / samples_.size(),
-                                                sum_camera_c0.z / samples_.size());
+        cv::Point3d avg_camera_c1 = cv::Point3d(sum_camera_c1.x / samples_.size(), sum_camera_c1.y / samples_.size(),
+                                                sum_camera_c1.z / samples_.size());
+        cv::Point3d avg_camera_c2 = cv::Point3d(sum_camera_c2.x / samples_.size(), sum_camera_c2.y / samples_.size(),
+                                                sum_camera_c2.z / samples_.size());
+        cv::Point3d avg_camera_c3 = cv::Point3d(sum_camera_c3.x / samples_.size(), sum_camera_c3.y / samples_.size(),
+                                                sum_camera_c3.z / samples_.size());
 
         cv::Point3d avg_lidar_c0 = cv::Point3d(sum_lidar_c0.x / samples_.size(), sum_lidar_c0.y / samples_.size(),
                                                sum_lidar_c0.z / samples_.size());
@@ -1117,9 +1117,6 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         double h1_diff = abs(avg_h1 - board_height_);
         double be_dim_err = w0_diff + w1_diff + h0_diff + h1_diff;
 
-        double distance = sqrt(pow(sample.lidar_centre.x / 1000 - 0, 2) + pow(sample.lidar_centre.y / 1000 - 0, 2) +
-                               pow(sample.lidar_centre.z / 1000 - 0, 2));
-
         sample.camera_centre = cv::Point3d(sum_camera_centre.x / samples_.size(), sum_camera_centre.y / samples_.size(),
                                            sum_camera_centre.z / samples_.size());
 
@@ -1133,6 +1130,9 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
         sample.lidar_normal = cv::Point3d(sum_lidar_normal.x / samples_.size(), sum_lidar_normal.y / samples_.size(),
                                           sum_lidar_normal.z / samples_.size());
+
+        double distance = sqrt(pow(sample.lidar_centre.x / 1000 - 0, 2) + pow(sample.lidar_centre.y / 1000 - 0, 2) +
+                               pow(sample.lidar_centre.z / 1000 - 0, 2));
 
         cv::Point3d sum_of_lidar_normal_squares, sum_of_lidar_centre_squares;
         double sum_of_xln_squares, sum_of_yln_squares, sum_of_zln_squares;  // for lidar normal
