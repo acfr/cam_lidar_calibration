@@ -24,7 +24,9 @@
 
 #include <fstream>
 #include <iostream>
-#include <opencv/cv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/calib3d.hpp>
 #include <string>
 
 #include "cam_lidar_calibration/load_params.h"

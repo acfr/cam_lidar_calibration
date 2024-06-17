@@ -2,16 +2,16 @@
  * Copyright 2023 Australian Centre For Robotics
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * 
+ *
  * You may obtain a copy of the License at
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
+ *
  * Author: Darren Tsai
  */
 
@@ -453,7 +453,7 @@ bool Optimiser::optimise(RotationTranslation& opt_result, std::vector<Optimisati
   cv::Mat cp_trans = tmp_rot * camera_centres_.t();
   cv::Mat trans_diff = lidar_centres_.t() - cp_trans;
   cv::Mat summed_diff;
-  cv::reduce(trans_diff, summed_diff, 1, CV_REDUCE_SUM, CV_64F);
+  cv::reduce(trans_diff, summed_diff, 1, cv::REDUCE_SUM, CV_64F);
   summed_diff = summed_diff / trans_diff.cols;
   const RotationTranslation initial_rotation_translation{ best_rotation_, summed_diff.at<double>(0),
                                                           summed_diff.at<double>(1), summed_diff.at<double>(2) };

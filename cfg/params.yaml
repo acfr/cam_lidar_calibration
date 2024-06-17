@@ -1,7 +1,7 @@
 # Topics
-camera_topic: "/image"
-camera_info: "/sekonix_camera/port_a_cam_1/camera_info"
-lidar_topic: "/ouster/points"
+camera_topic: "/axis/image_raw/compressed"
+camera_info: "/axis/camera_info"
+lidar_topic: "/robot/FC_ouster/points"
 
 # Dynamic rqt_reconfigure default bounds
 feature_extraction:
