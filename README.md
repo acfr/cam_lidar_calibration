@@ -228,6 +228,17 @@ The baseline calibration algorithm was from Verma, 2019. You can find their [pap
 
 Please cite our work if this package helps with your research.
 ```
+@INPROCEEDINGS{8917108,
+  author={Verma, Surabhi and Berrio, Julie Stephany and Worrall, Stewart and Nebot, Eduardo},
+  booktitle={2019 IEEE Intelligent Transportation Systems Conference (ITSC)}, 
+  title={Automatic extrinsic calibration between a camera and a 3D Lidar using 3D point and plane correspondences}, 
+  year={2019},
+  volume={},
+  number={},
+  pages={3906-3912},
+  keywords={Cameras;Three-dimensional displays;Laser radar;Calibration;Robot sensing systems;Feature extraction;Lasers},
+  doi={10.1109/ITSC.2019.8917108}}
+
 @INPROCEEDINGS{tsai2021optimising,
   author={Tsai, Darren and Worrall, Stewart and Shan, Mao and Lohr, Anton and Nebot, Eduardo},
   booktitle={2021 IEEE International Intelligent Transportation Systems Conference (ITSC)},
