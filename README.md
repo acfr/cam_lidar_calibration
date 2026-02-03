@@ -1,9 +1,11 @@
-# Camera-LiDAR Calibration - V 2.0
+# Camera-LiDAR Calibration - V 3.0 (ROS2 Jazzy)
 
-This is the second version of the official code release of the ITSC 2021 paper, ["Optimising the selection of samples for robust lidar camera calibration"](https://arxiv.org/abs/2103.12287).
+This is the ROS2 Jazzy version of the official code release of the ITSC 2021 paper, ["Optimising the selection of samples for robust lidar camera calibration"](https://arxiv.org/abs/2103.12287).
 
-Note:
-To access Version 1.0 of this code, that is the original implementation from above mentioned paper. Please switch to the branch labelled `master`
+**Note:** This package has been fully migrated to ROS2 Jazzy with modern C++17 features.
+- For ROS1 Melodic (V1.0 - original implementation), switch to the `master` branch
+- For ROS1 Melodic (V2.0 - improved UI), switch to the `melodic` branch
+- For ROS2 Jazzy (V3.0 - current), use the `jazzy_dev` branch
 
 This package estimates the calibration parameters that transforms the camera frame (parent) into the lidar frame (child). We aim to simplify the calibration process by optimising the pose selection process to take away the tedious trial-and-error of having to re-calibrate with different poses until a good calibration is found. We seek to obtain calibration parameters as an estimate with uncertainty that fits the entire scene instead of solely fitting the target, which many existing works struggle with. Our proposed approach overcomes the limitations of existing target-based calibration methods, namely from user error and overfitting of the target. For more details, please take a look at our paper.
 
@@ -15,25 +17,34 @@ This package estimates the calibration parameters that transforms the camera fra
 
 <b>Note:</b> In the paper, equation (2) which shows the equation for the condition number has a typo. The correct equation for calculating the condition number is  implemented in this repo. The formula is: ![conditionnum_formula](https://user-images.githubusercontent.com/39115809/134602161-11fc2091-34e6-49af-9edc-79bebe631a27.gif)
 
-# Changelog - Whats changed in V2?
-- Use the feature extraction ui to create a region of interest where the scene is static
-- Take a sample of the static scene
-- The captured sample is subtracted from every consecutive frame to then extract any other new item in the scene. This is used to distinguish just the board in the frame
-- Capture sample - Now takes 5 consecutive frames and gets the running average of the board's parameters
-- Take as many samples as you need
-- Optimise does what it used to do
+# Changelog - What's New in V3 (ROS2 Jazzy)?
 
-Other changes
-- Visualise Results script takes care of angle wrapping to stop sudden angle sign fluctuations at +/-2Pi
-- Pre-commit was set up
-- Enforce Clang to format all the files appropriately, was hard to read and needed consistency very badly.
+## Major Changes
+- ✅ **Full ROS2 Jazzy migration** with `rclcpp` and `ament_cmake`
+- ✅ **Modern C++17 features** for improved performance and safety
+- ✅ **Docker two-image setup** for fast development iteration
+- ✅ **tf2 library** replacing ROS1 tf transformations
+- ✅ **Custom outlier removal** to avoid FLANN C++17 compatibility issues
+- ✅ **RViz2 panel** for interactive calibration workflow
+
+## From V2
+- Feature extraction UI with region of interest selection
+- Background subtraction for automatic board detection
+- Running average of 5 consecutive frames for robust parameter estimation
+- Angle wrapping in visualization to prevent discontinuities at ±2π
+- Code formatting with consistent style enforcement
 
 # 1. Getting started
 ## 1.1 Installation
 
-**Note:** This package has been migrated to ROS2 Jazzy. For ROS1 Melodic version, see the `master` branch.
+### Prerequisites
+- **ROS2 Jazzy** installed ([installation guide](https://docs.ros.org/en/jazzy/Installation.html))
+- **PCL 1.14+** (included in ROS2 Jazzy desktop-full)
+- **OpenCV 4.x** (included in ROS2 Jazzy desktop-full)
+- **Qt5** for RViz2 panels
 
-### Local ROS2
+### Local Installation
+
 1. Clone the repository in your ROS2 workspace `src/` folder
 ```bash
 cd ~/ros2_ws/src
@@ -53,47 +64,45 @@ pip3 install pandas scipy numpy matplotlib
 
 4. Build the package
 ```bash
-colcon build --packages-select cam_lidar_calibration
+cd ~/ros2_ws
+colcon build --packages-select cam_lidar_calibration --symlink-install
 source install/setup.bash
 ```
 
-### Docker (Recommended for Reproducibility)
+### Docker (Recommended)
 
-Using Docker ensures a consistent development environment with all dependencies pre-installed.
+Docker provides a consistent ROS2 Jazzy environment with all dependencies pre-installed. The setup uses a **two-image architecture**:
+- **Base image** (~4-5GB): Contains all ROS2 and system dependencies, built once
+- **Dev image**: Lightweight layer that mounts your source code for fast iteration
 
-1. Clone the repository
+**Quick Start with Makefile (Easiest):**
 ```bash
-git clone https://github.com/acfr/cam_lidar_calibration -b jazzy_dev
-cd cam_lidar_calibration/docker
+cd docker
+make build-all    # First time: builds both images (~10-15 min)
+make run          # Start container with GPU
+make exec         # Enter container
+make build-pkg    # Build the package
 ```
 
-2. Build and run the Docker container
-
-**With GPU support (recommended):**
+**Or using shell scripts:**
 ```bash
-./run.sh --build
+cd docker
+./build.sh --all              # Build both images
+./run.sh                      # Start with GPU
+# OR
+./run.sh --cuda off           # Start without GPU
+
+docker compose exec dev bash  # Enter container
+colcon build --packages-select cam_lidar_calibration --symlink-install
 ```
 
-**Without GPU:**
-```bash
-./run.sh --cuda off --build
-```
+**Key Features:**
+- Source code mounted from host (edit on host, compile in container)
+- Build artifacts persisted in Docker volumes
+- Dev image rebuilds in seconds after dependency changes
+- GPU support with NVIDIA Docker runtime
 
-3. Enter the container
-```bash
-docker compose exec cam_lidar_dev bash
-```
-
-4. Build the workspace inside the container
-```bash
-cd /ros2_ws
-colcon build --packages-select cam_lidar_calibration
-source install/setup.bash
-```
-
-For detailed Docker usage, see [docker/README.md](docker/README.md).
-
-**Note:** The Docker setup uses `docker-compose.yml` and mounts your local `cam_lidar_calibration` folder to `/ros2_ws/src/cam_lidar_calibration`. Changes made in the container are reflected on your host system and vice versa.
+For detailed Docker usage and troubleshooting, see [docker/README.md](docker/README.md).
 
 ## 1.2 Quick start
 
@@ -171,18 +180,28 @@ lidar_topic: "/velodyne/front/points"
 ## 2.3 Capture poses and get the best sets of calibration parameters
 
 ### 1. Launch calibration package
-Run the calibration package with the `import_samples` flag set to false. An rviz window and rqt dynamic reconfigure window should open. If you're using a docker container and RViz does not open, try setting the cuda flag to the opposite of what you used.
+Run the calibration package with the `import_samples` flag set to false. An RViz2 window with the custom calibration panel should open.
 
+```bash
+ros2 launch cam_lidar_calibration run_optimiser.launch.py import_samples:=false
 ```
-roslaunch cam_lidar_calibration run_optimiser.launch import_samples:=false
-```
-This process can be done online or offline. If you are offline, make sure to play the rosbag using `--pause` flag so that rviz can get the `/tf` topics e.g. `rosbag play --pause mybag.bag`. If you are running a docker container, you can run the bag file on a separate terminal window outside the docker container.
 
-Make sure to change the image topic to your camera image topic in order to see the video feed. This can be done by editing line 62 of `cam_lidar_calibration.rviz` or open rviz->panels->display, and change the field that is currently `/gmsl/A0/image_color`.
+This process can be done online or offline. If you are offline, make sure to play the ROS2 bag:
+```bash
+ros2 bag play mybag/
+```
+
+If you're running in Docker, you can play the bag file from a separate terminal outside the container.
+
+**Troubleshooting:**
+- If RViz2 doesn't open in Docker, check X11 forwarding: `xhost +local:docker`
+- To change the camera topic, edit `rviz/cam_lidar_calibration.rviz` or use RViz2 UI: Panels → Displays → Image → Topic
 
 ### 2. Scan a static scene without the chessboard
 
-Using the rqt_reconfigure window, modify the values of the x,y and z axes limits to such that it only shows a scene where there are no moving subjects in the scene. For example, we work in a big lab where there is constant movement of people. Using the rqt_reconfigure we are able to isolate a region of interest in in our point cloud. Once you are happy with your static scene press 'Capture Background'. Once the background scene is captured, this package will perform background subtraction in every frame to automatically isolate new items in the scene.
+Using the **RViz2 Camera-LiDAR Calibration panel**, modify the values of the x, y, and z axes limits to isolate a region where the scene is static (no moving objects). For example, in a lab environment with people moving around, you can use the sliders to define a region of interest in the point cloud.
+
+Once you're satisfied with your static scene, press **'Capture Background'**. This package will then perform background subtraction in every subsequent frame to automatically detect new objects (like the chessboard) in the scene.
 
 ### 3. First sample of the chessboard
 
@@ -240,8 +259,17 @@ After you obtain the calibration csv output file, copy-paste the absolute path o
 
 The final estimated calibration parameters can be found in the terminal window or taken from the histogram plots.
 
+```bash
+ros2 launch cam_lidar_calibration assess_results.launch.py \
+  csv:=/path/to/calibration_output.csv \
+  visualise:=true
 ```
-roslaunch cam_lidar_calibration assess_results.launch csv:="$(rospack find cam_lidar_calibration)/data/vlp/calibration_quickstart.csv" visualise:=true
+
+For the quickstart example:
+```bash
+ros2 launch cam_lidar_calibration assess_results.launch.py \
+  csv:=$(ros2 pkg prefix cam_lidar_calibration)/../../src/cam_lidar_calibration/data/vlp/calibration_quickstart.csv \
+  visualise:=true
 ```
 
 <p  align="center">
