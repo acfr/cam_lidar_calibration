@@ -149,6 +149,8 @@ install(FILES plugin_description.xml
   DESTINATION share/${PROJECT_NAME}
 )
 
+pluginlib_export_plugin_description_file(rviz_common plugin_description.xml)
+
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )

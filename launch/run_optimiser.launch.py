@@ -42,7 +42,7 @@ def generate_launch_description():
                 'num_lowestvoq': 50,
                 'import_samples': LaunchConfiguration('import_samples'),
                 'import_path': import_path,
-                'distance_offset_mm': 0,
+                'distance_offset_mm': 0.0,
             }
         ]
     )
