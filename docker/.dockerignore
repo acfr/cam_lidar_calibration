@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Build artifacts
+build/
+install/
+log/
+devel/
+*.pyc
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Docker
+docker/
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Data files (can be large)
+data/
+*.bag
+*.pcd
+*.csv
+*.png
+*.jpg
+
+# Temporary files
+.DS_Store
+*.tmp

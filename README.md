@@ -31,53 +31,79 @@ Other changes
 # 1. Getting started
 ## 1.1 Installation
 
-This package has only been tested in ROS Melodic.
+**Note:** This package has been migrated to ROS2 Jazzy. For ROS1 Melodic version, see the `master` branch.
 
-### Local ROS
-1. Clone the repository in your `catkin_ws/src/` folder
-```
-git clone -c http.sslverify=false -b calib-v2 https://github.com/acfr/cam_lidar_calibration
-```
-2. Download ros and python dependencies
-```
-sudo apt update && sudo apt-get install -y ros-melodic-pcl-conversions ros-melodic-pcl-ros ros-melodic-tf2-sensor-msgs
-pip install pandas scipy
-```
-3. Build the package and source the `setup.bash` or `setup.zsh` file.
-```
-catkin build cam_lidar_calibration
-source ~/catkin_ws/devel/setup.bash
+### Local ROS2
+1. Clone the repository in your ROS2 workspace `src/` folder
+```bash
+cd ~/ros2_ws/src
+git clone https://github.com/acfr/cam_lidar_calibration -b jazzy_dev
 ```
 
-### Docker
-1. Clone the repository in your `catkin_ws/src/` folder
+2. Install dependencies
+```bash
+cd ~/ros2_ws
+rosdep install --from-paths src --ignore-src -r -y
 ```
-git clone -c http.sslverify=false -b calib-v2 https://github.com/acfr/cam_lidar_calibration
-```
-2. Run the docker image (which will be pulled from ockerhub). If your computer has a Nvidia GPU, set the cuda flag `--cuda on`. If you do not have one, set `--cuda off`.
 
+3. Install Python dependencies
+```bash
+pip3 install pandas scipy numpy matplotlib
 ```
+
+4. Build the package
+```bash
+colcon build --packages-select cam_lidar_calibration
+source install/setup.bash
+```
+
+### Docker (Recommended for Reproducibility)
+
+Using Docker ensures a consistent development environment with all dependencies pre-installed.
+
+1. Clone the repository
+```bash
+git clone https://github.com/acfr/cam_lidar_calibration -b jazzy_dev
 cd cam_lidar_calibration/docker
-./run.sh --cuda on
 ```
-Once you run this script, the docker container will run and immediately build the catkin workspace and source the `setup.bash` file. When this is done, you can move on to the **Quick start** section.
 
-If you'd like to build the image from scratch, a `build.sh` script is also provided.
+2. Build and run the Docker container
 
-Note: If using docker, the `./run.sh` mounts your local `cam_lidar_calibration` folder to `/catkin_ws/src/cam_lidar_calibration` inside the container. When running the calibration, this would create csv files inside the container under root ownership which is not ideal. However the workaround is to use the following command outside the docker image, which would change ownership of **all** files in your current folder to be the same as your $USER and $GROUP in the local environment.
+**With GPU support (recommended):**
+```bash
+./run.sh --build
 ```
-sudo chown $USER:$GROUP *
+
+**Without GPU:**
+```bash
+./run.sh --cuda off --build
 ```
+
+3. Enter the container
+```bash
+docker compose exec cam_lidar_dev bash
+```
+
+4. Build the workspace inside the container
+```bash
+cd /ros2_ws
+colcon build --packages-select cam_lidar_calibration
+source install/setup.bash
+```
+
+For detailed Docker usage, see [docker/README.md](docker/README.md).
+
+**Note:** The Docker setup uses `docker-compose.yml` and mounts your local `cam_lidar_calibration` folder to `/ros2_ws/src/cam_lidar_calibration`. Changes made in the container are reflected on your host system and vice versa.
 
 ## 1.2 Quick start
 
-You can verify that this repository runs successfully by running this package on our provided quick-start data. If you are using docker, these instructions should be run inside the container.
+You can verify that this repository runs successfully by running this package on our provided quick-start data.
 
 **1. Run the calibration process**
 
 This first step takes the saved poses, computes the best sets with the lowest VOQ score.
-```
-roslaunch cam_lidar_calibration run_optimiser.launch import_samples:=true
+```bash
+ros2 launch cam_lidar_calibration run_optimiser.launch.py import_samples:=true
 ```
 After calibration, the output is saved in the same directory as the imported samples. For this quickstart example, the output is saved in `cam_lidar_calibration/data/vlp/`.
 
@@ -85,9 +111,11 @@ After calibration, the output is saved in the same directory as the imported sam
 
 This step gives the estimated calibration parameters by taking a filtered mean of the best sets, and displaying the gaussian fitted histogram of estimated parameters. Additionally, we provide an assessment of the calibration results by computing the reprojection error over all provided data samples and a visualisation (if specified).
 
-To obtain and assess the calibration output, provide the absolute path of the csv output file generated in the first step. The example below uses pre-computed calibration results. You can replace this with your newly generated results in step 1 if you wish. You should see a terminal output with the reprojection errors, along with a gaussian-fitted histogram and a visualisation.
-```
-roslaunch cam_lidar_calibration assess_results.launch csv:="$(rospack find cam_lidar_calibration)/data/vlp/calibration_quickstart.csv" visualise:=true
+To obtain and assess the calibration output, provide the absolute path of the csv output file generated in the first step:
+```bash
+ros2 launch cam_lidar_calibration assess_results.launch.py \
+  csv:=/path/to/calibration_output.csv \
+  visualise:=true
 ```
 
 That's it! If this quick start worked successfully, you can begin using this tool for your own data. If not, please create an issue and we'll aim to resolve it promptly.

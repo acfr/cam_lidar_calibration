@@ -1,0 +1,48 @@
+# Build artifacts
+build/
+install/
+log/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Docker files (not needed in context)
+docker/
+Dockerfile*
+docker-compose*.yml
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+*.egg
+
+# Documentation and notes
+*.md
+LICENCE
+*.txt
+
+# Data and temporary files
+data/
+*.bag
+*.csv
+*.log
+tmp/
+temp/
+
+# ROS1 legacy (if any remain)
+devel/
+*.launch

@@ -1,66 +1,77 @@
-FROM ubuntu:18.04
+# Base image with all ROS2 Jazzy dependencies for cam_lidar_calibration
+# This image is built infrequently and contains all system-level dependencies
+
+FROM osrf/ros:jazzy-desktop-full
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Install basic packages
+LABEL maintainer="ACFR"
+LABEL description="Base image for ROS2 Jazzy camera-lidar calibration with perception libraries"
+
+# Install perception and development tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-         curl \
-         python3-pip \
-         gnupg2 \
-         lsb-core \
-         libpng16-16 \
-         libjpeg-turbo8 \
-         libtiff5 \
-         wget && \
-     rm -rf /var/lib/apt/lists/*
+    # ROS2 perception packages
+    ros-jazzy-pcl-ros \
+    ros-jazzy-pcl-conversions \
+    ros-jazzy-cv-bridge \
+    ros-jazzy-image-transport \
+    ros-jazzy-image-transport-plugins \
+    ros-jazzy-vision-opencv \
+    ros-jazzy-rviz2 \
+    ros-jazzy-tf2-eigen \
+    ros-jazzy-tf2-geometry-msgs \
+    ros-jazzy-rqt \
+    ros-jazzy-rqt-common-plugins \
+    ros-jazzy-robot-state-publisher \
+    ros-jazzy-joint-state-publisher \
+    # Python and build tools
+    python3-pip \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    python3-vcstool \
+    # Development libraries
+    libpcl-dev \
+    libopencv-dev \
+    libeigen3-dev \
+    libnlopt-dev \
+    libboost-all-dev \
+    # Build essentials
+    git \
+    cmake \
+    build-essential \
+    gdb \
+    # Qt for RViz panels
+    qtbase5-dev \
+    qtdeclarative5-dev \
+    # Utilities
+    wget \
+    curl \
+    vim \
+    nano \
+    tmux \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install ROS
-RUN sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
-RUN apt-key adv --keyserver 'hkp://keyserver.ubuntu.com:80' --recv-key C1CF6E31E6BADE8868B172B4F42ED6FBAB17C654
-RUN curl -sSL 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0xC1CF6E31E6BADE8868B172B4F42ED6FBAB17C654' | apt-key add -
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ros-melodic-desktop \
-        python-rosdep
-RUN rosdep init
-RUN rosdep update
-RUN echo "source /opt/ros/melodic/setup.bash" >> ~/.bashrc
+# Install Python dependencies for calibration
+RUN pip3 install --no-cache-dir \
+    pandas \
+    scipy \
+    numpy \
+    matplotlib \
+    opencv-python
 
-# Intalling ROS basic tools
-RUN sh -c 'echo "deb http://packages.ros.org/ros/ubuntu `lsb_release -sc` main" > /etc/apt/sources.list.d/ros-latest.list'
-RUN wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
+# Initialize rosdep
+RUN if [ ! -d "/etc/ros/rosdep" ]; then rosdep init; fi && \
+    rosdep update
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
-        python-catkin-tools \
-        python-pip \
-        python-tk \
-        python-rosinstall \
-        python-rosinstall-generator \
-        python-wstool \
-        software-properties-common && \
-     rm -rf /var/lib/apt/lists/*
+# Setup ROS2 environment
+RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
+    echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc && \
+    echo "alias cb='colcon build --symlink-install'" >> /root/.bashrc && \
+    echo "alias cs='source install/setup.bash'" >> /root/.bashrc
 
-# Catkin workspace setup
-RUN mkdir -p /catkin_ws/src
+# Create workspace directory structure
+RUN mkdir -p /ros2_ws/src
 
-# Initialise workspace
-WORKDIR /catkin_ws/src
-RUN /bin/bash -c "source /opt/ros/melodic/setup.bash; catkin_init_workspace"
-WORKDIR /catkin_ws
-RUN /bin/bash -c "source /opt/ros/melodic/setup.bash; catkin build;"
-RUN echo "source /catkin_ws/devel/setup.bash" >> ~/.bashrc
+WORKDIR /ros2_ws
 
-# Install cam_lidar_calibration specific dependencies
-RUN pip install -U pandas scipy
-
-COPY ./dependencies /tmp/dependencies
-RUN apt-get update && \
-    sed "s/\melodic/melodic/g" "/tmp/dependencies" | xargs apt-get install -y #&& \
-    rm -rf /var/lib/apt/lists/*
-
-# Clean image
-RUN sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/*
-
-CMD ["tail", "-f", "/dev/null"]
-ADD entrypoint.sh /entrypoint.sh
-ENTRYPOINT [ "/entrypoint.sh" ]
+CMD ["bash"]

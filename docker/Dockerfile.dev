@@ -1,0 +1,35 @@
+# Development image for cam_lidar_calibration
+# This image extends the base image and sets up for mounting source code
+# Build frequently as needed during development
+
+ARG BASE_IMAGE=cam_lidar_calibration:base-jazzy
+FROM ${BASE_IMAGE}
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+LABEL maintainer="ACFR"
+LABEL description="Development image for ROS2 Jazzy camera-lidar calibration"
+
+# Setup workspace with auto-sourcing
+RUN echo "# Auto-source workspace if built" >> /root/.bashrc && \
+    echo "if [ -f /ros2_ws/install/setup.bash ]; then" >> /root/.bashrc && \
+    echo "    source /ros2_ws/install/setup.bash" >> /root/.bashrc && \
+    echo "    echo 'Workspace sourced successfully'" >> /root/.bashrc && \
+    echo "fi" >> /root/.bashrc
+
+# Add helpful development aliases
+RUN echo "# Development aliases" >> /root/.bashrc && \
+    echo "alias build='cd /ros2_ws && colcon build --packages-select cam_lidar_calibration --symlink-install'" >> /root/.bashrc && \
+    echo "alias build_all='cd /ros2_ws && colcon build --symlink-install'" >> /root/.bashrc && \
+    echo "alias clean='cd /ros2_ws && rm -rf build install log'" >> /root/.bashrc && \
+    echo "alias src='cd /ros2_ws/src/cam_lidar_calibration'" >> /root/.bashrc && \
+    echo "alias ws='cd /ros2_ws'" >> /root/.bashrc
+
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+WORKDIR /ros2_ws
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]

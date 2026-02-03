@@ -1,6 +1,14 @@
 #!/bin/bash
+set -e
 
-source /opt/ros/melodic/setup.bash
-catkin build
-source /catkin_ws/devel/setup.bash
+# Source ROS2 environment
+source /opt/ros/jazzy/setup.bash
+
+# Source workspace if built
+if [ -f "/ros2_ws/install/setup.bash" ]; then
+    echo "Sourcing workspace..."
+    source /ros2_ws/install/setup.bash
+fi
+
+# Execute the command
 exec "$@"

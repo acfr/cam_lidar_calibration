@@ -1,4 +1,7 @@
-ros-melodic-pcl-conversions
-ros-melodic-pcl-ros
-ros-melodic-tf2-sensor-msgs
-ros-melodic-image-transport-plugins
+ros-jazzy-pcl-conversions
+ros-jazzy-pcl-ros
+ros-jazzy-tf2-eigen
+ros-jazzy-tf2-geometry-msgs
+ros-jazzy-image-transport-plugins
+ros-jazzy-vision-opencv
+ros-jazzy-cv-bridge

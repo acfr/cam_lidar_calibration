@@ -1,22 +1,44 @@
 #!/bin/bash
 
-# Default setting
+# Script to run cam_lidar_calibration Docker container using Docker Compose
+
+set -e
+
+# Default settings
 CUDA="on"
+BUILD="off"
 
 function usage() {
     echo "Usage: $0 [OPTIONS]"
-    echo "    -c,--cuda <on|off>           Enable Cuda support in the Docker."
-    echo "                                 Default:$CUDA"
-    echo "    -h,--help                    Display the usage and exit."
+    echo ""
+    echo "Run the cam_lidar_calibration development container"
+    echo ""
+    echo "Options:"
+    echo "    -c, --cuda <on|off>      Enable CUDA/GPU support in Docker."
+    echo "                             Default: $CUDA"
+    echo "    -b, --build              Build the dev image before running."
+    echo "                             Default: $BUILD"
+    echo "    -h, --help               Display this usage and exit."
+    echo ""
+    echo "Examples:"
+    echo "    $0                       # Run with GPU enabled"
+    echo "    $0 --cuda off            # Run without GPU"
+    echo "    $0 --build               # Build dev image and run"
 }
 
-OPTS=`getopt --options c:h \
-         --long cuda:,help \
-         --name "$0" -- "$@"`
+OPTS=$(getopt --options c:bh \
+         --long cuda:,build,help \
+         --name "$0" -- "$@")
+
+if [ $? != 0 ]; then
+    usage
+    exit 1
+fi
+
 eval set -- "$OPTS"
 
 while true; do
-  case $1 in
+  case "$1" in
     -c|--cuda)
       param=$(echo $2 | tr '[:upper:]' '[:lower:]')
       case "${param}" in
@@ -25,13 +47,16 @@ while true; do
       esac
       shift 2
       ;;
+    -b|--build)
+      BUILD="on"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
       ;;
     --)
-	if [ ! -z $2 ];
-      then
+      if [ ! -z $2 ]; then
         echo "Invalid parameter: $2"
         exit 1
       fi
@@ -44,35 +69,89 @@ while true; do
   esac
 done
 
-if [ $CUDA == "on" ];
-then
-    ENVS="--env=NVIDIA_VISIBLE_DEVICES=all
-	  --env=NVIDIA_DRIVER_CAPABILITIES=all
-	  --env=DISPLAY=$DISPLAY
-	  --env=QT_X11_NO_MITSHM=1
-	  --gpus all"
-	echo "Running docker with Cuda support"
-else
-	ENVS="--env=XAUTHORITY=/home/$(id -un)/.Xauthority
-		  --env=ROS_IP=127.0.0.1
-		  --env=DISPLAY=$DISPLAY
-      --device=/dev/dri:/dev/dri"
-	echo "Running docker for cpu"
+# Enable X11 forwarding
+xhost +local:docker > /dev/null 2>&1
+
+echo "========================================"
+echo "  ROS2 Jazzy Camera-LiDAR Calibration"
+echo "========================================"
+echo "CUDA/GPU: $CUDA"
+echo "Build: $BUILD"
+echo ""
+
+# Build dev image if requested
+if [ "$BUILD" == "on" ]; then
+    echo "Building dev image..."
+    ./build.sh --dev
+    if [ $? -ne 0 ]; then
+        echo "Build failed!"
+        exit 1
+    fi
+    echo ""
 fi
 
-XSOCK=/tmp/.X11-unix
-XAUTH=$HOME/.Xauthority
-VOLUMES="--volume=$XSOCK:$XSOCK
-		 --volume=$XAUTH:/home/$(id -un)/.Xauthority
-		 --volume=${PWD}/..:/catkin_ws/src/cam_lidar_calibration"
+# Check if base and dev images exist
+if ! docker image inspect cam_lidar_calibration:base-jazzy >/dev/null 2>&1; then
+    echo "ERROR: Base image not found!"
+    echo "Please build the base image first:"
+    echo "    ./build.sh --all"
+    exit 1
+fi
 
-xhost +local:docker
+if ! docker image inspect cam_lidar_calibration:dev-jazzy >/dev/null 2>&1; then
+    echo "ERROR: Dev image not found!"
+    echo "Please build the dev image:"
+    echo "    ./build.sh --dev"
+    exit 1
+fi
 
-docker run \
--it --rm \
-$VOLUMES \
-$ENVS \
---privileged \
---net=host \
---workdir="/catkin_ws/src" \
-darrenjkt/cam_lidar_calibration:latest-melodic /bin/bash
+# Create docker-compose override for GPU settings
+if [ "$CUDA" == "off" ]; then
+    echo "Running without GPU support..."
+    cat > docker-compose.override.yml <<EOF
+version: '3.8'
+services:
+  dev:
+    deploy:
+      resources:
+        reservations:
+          devices: []
+EOF
+else
+    echo "Running with GPU support..."
+    # Remove override file if it exists
+    [ -f docker-compose.override.yml ] && rm docker-compose.override.yml
+fi
+
+# Start container
+echo ""
+echo "Starting development container..."
+docker compose up -d dev
+
+if [ $? -ne 0 ]; then
+    echo "Failed to start container!"
+    exit 1
+fi
+
+echo ""
+echo "✓ Container started successfully!"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Quick Commands"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "Enter container:"
+echo "  docker compose exec dev bash"
+echo ""
+echo "Build workspace:"
+echo "  docker compose exec dev bash -c 'cd /ros2_ws && colcon build --packages-select cam_lidar_calibration'"
+echo ""
+echo "Run calibration:"
+echo "  docker compose exec dev bash -c 'source install/setup.bash && ros2 launch cam_lidar_calibration run_optimiser.launch.py'"
+echo ""
+echo "Stop container:"
+echo "  docker compose down"
+echo ""
+echo "View logs:"
+echo "  docker compose logs -f dev"
+echo ""
