@@ -19,21 +19,25 @@
 
 namespace cam_lidar_calibration
 {
-void loadParams(const ros::NodeHandle& n, initial_parameters_t& i_params_)
+void loadParams(rclcpp::Node::SharedPtr node, initial_parameters_t& i_params_)
 {
-  int cb_w, cb_h, w, h, e_x, e_y;
-  n.getParam("camera_topic", i_params_.camera_topic);
-  n.getParam("camera_info", i_params_.camera_info);
-  n.getParam("lidar_topic", i_params_.lidar_topic);
-  n.getParam("chessboard/pattern_size/width", cb_w);
-  n.getParam("chessboard/pattern_size/height", cb_h);
+  // Declare and get parameters
+  i_params_.camera_topic = node->declare_parameter<std::string>("camera_topic", "/camera/image_raw");
+  i_params_.camera_info = node->declare_parameter<std::string>("camera_info", "/camera/camera_info");
+  i_params_.lidar_topic = node->declare_parameter<std::string>("lidar_topic", "/velodyne_points");
+  
+  int cb_w = node->declare_parameter<int>("chessboard.pattern_size.width", 8);
+  int cb_h = node->declare_parameter<int>("chessboard.pattern_size.height", 6);
   i_params_.chessboard_pattern_size = cv::Size(cb_w, cb_h);
-  n.getParam("chessboard/square_length", i_params_.square_length);
-  n.getParam("chessboard/board_dimension/width", w);
-  n.getParam("chessboard/board_dimension/height", h);
+  
+  i_params_.square_length = node->declare_parameter<int>("chessboard.square_length", 100);
+  
+  int w = node->declare_parameter<int>("chessboard.board_dimension.width", 800);
+  int h = node->declare_parameter<int>("chessboard.board_dimension.height", 600);
   i_params_.board_dimensions = cv::Size(w, h);
-  n.getParam("chessboard/translation_error/x", e_x);
-  n.getParam("chessboard/translation_error/y", e_y);
+  
+  int e_x = node->declare_parameter<int>("chessboard.translation_error.x", 0);
+  int e_y = node->declare_parameter<int>("chessboard.translation_error.y", 0);
   i_params_.cb_translation_error = cv::Point3d(e_x, e_y, 0);
 }
 }  // namespace cam_lidar_calibration

@@ -19,21 +19,20 @@
 #define cam_lidar_panel_h_
 
 #ifndef Q_MOC_RUN
-#include <ros/ros.h>
-#include <rviz/panel.h>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <rviz_common/panel.hpp>
 #endif
 
-#include <actionlib/client/simple_action_client.h>
-#include <cam_lidar_calibration/RunOptimiseAction.h>
+#include <cam_lidar_calibration/action/run_optimise.hpp>
+#include <cam_lidar_calibration/srv/optimise.hpp>
 
 #include <QLabel>
 #include <QPushButton>
 
-using ActionClient = actionlib::SimpleActionClient<cam_lidar_calibration::RunOptimiseAction>;
-
 namespace cam_lidar_calibration
 {
-class CamLidarPanel : public rviz::Panel
+class CamLidarPanel : public rviz_common::Panel
 {
   // This class uses Qt slots and is a subclass of QObject, so it needs
   // the Q_OBJECT macro.
@@ -48,10 +47,10 @@ public:
   // widget as they normally would with Qt.
   CamLidarPanel(QWidget* parent = 0);
 
-  // Now we declare overrides of rviz::Panel functions for saving and
+  // Now we declare overrides of rviz_common::Panel functions for saving and
   // loading data from the config file.
-  void load(const rviz::Config& config) override;
-  void save(rviz::Config config) const override;
+  void load(const rviz_common::Config& config) override;
+  void save(rviz_common::Config config) const override;
 
 public Q_SLOTS:
 
@@ -63,12 +62,11 @@ protected Q_SLOTS:
   void updateResult();
 
 protected:
-  // The ROS node handle.
-  ros::NodeHandle nh_;
-  ros::NodeHandle private_nh__;
+  // The ROS2 node
+  rclcpp::Node::SharedPtr node_;
   bool import_samples_;
-  ros::ServiceClient optimise_client_;
-  ActionClient action_client_;
+  rclcpp::Client<srv::Optimise>::SharedPtr optimise_client_;
+  rclcpp_action::Client<action::RunOptimise>::SharedPtr action_client_;
 
   QLabel* output_label_;
   QPushButton* capture_background_button_;

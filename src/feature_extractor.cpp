@@ -17,38 +17,41 @@
 
 #include "cam_lidar_calibration/feature_extractor.h"
 
-#include <cv_bridge/cv_bridge.h>
-#include <eigen_conversions/eigen_msg.h>
+#include <tf2_eigen/tf2_eigen.hpp>
 #include <pcl/common/intersections.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/project_inliers.h>
-#include <pcl/filters/radius_outlier_removal.h>
-#include <pcl/filters/statistical_outlier_removal.h>
+// Avoiding statistical_outlier_removal & radius_outlier_removal to prevent FLANN C++17 issues
+// #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/octree/octree_pointcloud_changedetector.h>
 #include <pcl/point_cloud.h>
 #include <pcl/segmentation/sac_segmentation.h>
-#include <pcl_ros/point_cloud.h>
-#include <ros/package.h>
-#include <ros/ros.h>
-#include <sensor_msgs/image_encodings.h>
-#include <visualization_msgs/MarkerArray.h>
-
-#include <Eigen/Geometry>
-#include <cmath>
-#include <ctime>
-#include <list>
-#include <opencv2/calib3d.hpp>
-#include <opencv2/core/eigen.hpp>
+#include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/impl/extract_indices.hpp>
 #include <pcl/filters/impl/passthrough.hpp>
 #include <pcl/filters/impl/project_inliers.hpp>
 #include <pcl/segmentation/impl/sac_segmentation.hpp>
 
-#include "cam_lidar_calibration/point_xyzir.h"
-// For shuffling of generated sets
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <sensor_msgs/image_encodings.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+
+#include <Eigen/Geometry>
 #include <algorithm>
+#include <cmath>
+#include <ctime>
+#include <filesystem>
+#include <chrono>
+#include <thread>
+#include <random>
+#include <opencv2/opencv.hpp>
+#include <opencv2/calib3d.hpp>
+#include <opencv2/core/eigen.hpp>
+#include <cv_bridge/cv_bridge.hpp>
+
+#include "cam_lidar_calibration/point_xyzir.h"
 
 using cv::findChessboardCorners;
 using cv::Mat_;
@@ -58,49 +61,132 @@ using PointCloud = pcl::PointCloud<pcl::PointXYZIR>;
 
 namespace cam_lidar_calibration
 {
-FeatureExtractor::FeatureExtractor()
+
+// Custom statistical outlier removal to avoid FLANN issues with PCL's version
+template<typename PointT>
+void statisticalOutlierRemoval(const typename pcl::PointCloud<PointT>::Ptr& cloud_in,
+                               typename pcl::PointCloud<PointT>::Ptr& cloud_out,
+                               int mean_k, double stddev_mul_thresh)
 {
-  // Creating ROS nodehandle
-  private_nh_ = ros::NodeHandle("~");
-  public_nh_ = ros::NodeHandle();
-  ros::NodeHandle pnh = ros::NodeHandle("~");  // getMTPrivateNodeHandle();
-  private_nh_.getParam("import_path", import_path_);
-  private_nh_.getParam("import_samples", import_samples);
-  private_nh_.getParam("num_lowestvoq", num_lowestvoq_);
-  private_nh_.getParam("distance_offset_mm", distance_offset_);
-  loadParams(public_nh_, i_params_);
+  cloud_out->points.clear();
+  cloud_out->header = cloud_in->header;
+  
+  if (cloud_in->empty()) return;
+  
+  std::vector<double> distances(cloud_in->size());
+  
+  // Compute mean distance for each point to its k nearest neighbors
+  for (size_t i = 0; i < cloud_in->size(); ++i)
+  {
+    std::vector<double> neighbor_dists;
+    const auto& point_i = cloud_in->points[i];
+    
+    for (size_t j = 0; j < cloud_in->size(); ++j)
+    {
+      if (i == j) continue;
+      const auto& point_j = cloud_in->points[j];
+      double dist = std::sqrt(
+        std::pow(point_i.x - point_j.x, 2) +
+        std::pow(point_i.y - point_j.y, 2) +
+        std::pow(point_i.z - point_j.z, 2)
+      );
+      neighbor_dists.push_back(dist);
+    }
+    
+    // Sort and take k nearest
+    std::sort(neighbor_dists.begin(), neighbor_dists.end());
+    int k = std::min(mean_k, static_cast<int>(neighbor_dists.size()));
+    double sum = std::accumulate(neighbor_dists.begin(), neighbor_dists.begin() + k, 0.0);
+    distances[i] = sum / k;
+  }
+  
+  // Compute mean and standard deviation of distances
+  double sum = std::accumulate(distances.begin(), distances.end(), 0.0);
+  double mean = sum / distances.size();
+  
+  double sq_sum = 0.0;
+  for (double d : distances) {
+    sq_sum += (d - mean) * (d - mean);
+  }
+  double stddev = std::sqrt(sq_sum / distances.size());
+  
+  double threshold = mean + stddev_mul_thresh * stddev;
+  
+  // Filter points
+  for (size_t i = 0; i < cloud_in->size(); ++i)
+  {
+    if (distances[i] <= threshold)
+    {
+      cloud_out->push_back(cloud_in->points[i]);
+    }
+  }
+}
+
+FeatureExtractor::FeatureExtractor(rclcpp::Node::SharedPtr node)
+  : node_(node)
+{
+  // Get parameters
+  import_path_ = node_->declare_parameter<std::string>("import_path", "");
+  import_samples = node_->declare_parameter<bool>("import_samples", false);
+  num_lowestvoq_ = node_->declare_parameter<int>("num_lowestvoq", 50);
+  distance_offset_ = node_->declare_parameter<double>("distance_offset_mm", 0.0);
+  loadParams(node_, i_params_);
   optimiser_ = std::make_shared<Optimiser>(i_params_);
-  ROS_INFO("Input parameters loaded");
+  RCLCPP_INFO(node_->get_logger(), "Input parameters loaded");
 
-  it_.reset(new image_transport::ImageTransport(public_nh_));
-  it_p_.reset(new image_transport::ImageTransport(private_nh_));
-
-  // Dynamic reconfigure gui to set the experimental region bounds
-  server_ = boost::make_shared<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>>(pnh);
-  dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>::CallbackType f;
-  f = boost::bind(&FeatureExtractor::boundsCB, this, _1, _2);
-  server_->setCallback(f);
+  it_ = std::make_shared<image_transport::ImageTransport>(node_);
+  
+  // Declare bounds parameters (replaces dynamic_reconfigure)
+  node_->declare_parameter("bounds.x_min", -10.0);
+  node_->declare_parameter("bounds.x_max", 10.0);
+  node_->declare_parameter("bounds.y_min", -10.0);
+  node_->declare_parameter("bounds.y_max", 10.0);
+  node_->declare_parameter("bounds.z_min", -2.0);
+  node_->declare_parameter("bounds.z_max", 2.0);
+  node_->declare_parameter("bounds.k", 50);
+  node_->declare_parameter("bounds.z", 1.0);
+  node_->declare_parameter("bounds.voxel_res", 0.05);
+  
+  bounds_.x_min = node_->get_parameter("bounds.x_min").as_double();
+  bounds_.x_max = node_->get_parameter("bounds.x_max").as_double();
+  bounds_.y_min = node_->get_parameter("bounds.y_min").as_double();
+  bounds_.y_max = node_->get_parameter("bounds.y_max").as_double();
+  bounds_.z_min = node_->get_parameter("bounds.z_min").as_double();
+  bounds_.z_max = node_->get_parameter("bounds.z_max").as_double();
+  bounds_.k = node_->get_parameter("bounds.k").as_int();
+  bounds_.z = node_->get_parameter("bounds.z").as_double();
+  bounds_.voxel_res = node_->get_parameter("bounds.voxel_res").as_double();
 
   // Synchronizer to get synchronized camera-lidar scan pairs
-  image_sub_ = std::make_shared<image_sub_type>(private_nh_, i_params_.camera_topic, queue_rate_);
-  pc_sub_ = std::make_shared<pc_sub_type>(private_nh_, i_params_.lidar_topic, queue_rate_);
+  image_sub_ = std::make_shared<image_sub_type>(
+      node_.get(), i_params_.camera_topic,
+      rclcpp::QoS(queue_rate_).get_rmw_qos_profile());
+  pc_sub_ = std::make_shared<pc_sub_type>(
+      node_.get(), i_params_.lidar_topic,
+      rclcpp::QoS(queue_rate_).get_rmw_qos_profile());
 
   image_pc_sync_ = std::make_shared<message_filters::Synchronizer<ImageLidarSyncPolicy>>(
       ImageLidarSyncPolicy(queue_rate_), *image_sub_, *pc_sub_);
-  image_pc_sync_->registerCallback(boost::bind(&FeatureExtractor::extractRegionOfInterest, this, _1, _2));
+  image_pc_sync_->registerCallback(
+      std::bind(&FeatureExtractor::extractRegionOfInterest, this,
+                std::placeholders::_1, std::placeholders::_2));
 
-  board_cloud_pub_ = private_nh_.advertise<PointCloud>("chessboard", 1);
-  subtracted_cloud_pub_ = private_nh_.advertise<PointCloud>("subtracted_pc", 1);
+  board_cloud_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("chessboard", 1);
+  subtracted_cloud_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("subtracted_pc", 1);
 
-  experimental_region_pub_ = private_nh_.advertise<PointCloud>("experimental_region", 10);
-  optimise_service_ = public_nh_.advertiseService("optimiser", &FeatureExtractor::serviceCB, this);
-  samples_pub_ = private_nh_.advertise<visualization_msgs::MarkerArray>("collected_samples", 0);
+  experimental_region_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("experimental_region", 10);
+  optimise_service_ = node_->create_service<srv::Optimise>(
+      "optimiser",
+      std::bind(&FeatureExtractor::serviceCB, this, std::placeholders::_1, std::placeholders::_2));
+  samples_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("collected_samples", 1);
   image_publisher_ = it_->advertise("camera_features", 1);
 
   valid_camera_info_ = false;
   i_params_.cameramat = cv::Mat::zeros(3, 3, CV_64F);
   i_params_.distcoeff = cv::Mat::eye(1, 4, CV_64F);
-  camera_info_sub_ = public_nh_.subscribe(i_params_.camera_info, 20, &FeatureExtractor::callback_camerainfo, this);
+  camera_info_sub_ = node_->create_subscription<sensor_msgs::msg::CameraInfo>(
+      i_params_.camera_info, 20,
+      std::bind(&FeatureExtractor::callback_camerainfo, this, std::placeholders::_1));
 
   // Create folder for output if it does not exist
   curdatetime_ = getDateTime();
@@ -117,30 +203,30 @@ FeatureExtractor::FeatureExtractor()
   }
   else
   {
-    std::string data_dir = ros::package::getPath("cam_lidar_calibration") + "/data";
+    std::string data_dir = ament_index_cpp::get_package_share_directory("cam_lidar_calibration") + "/data";
     // Successful capture, store jpeg and pcd file
-    if (boost::filesystem::create_directory(data_dir))
+    if (std::filesystem::create_directories(data_dir))
     {
-      ROS_INFO_STREAM("Data save folder created at " << data_dir);
+      RCLCPP_INFO_STREAM(node_->get_logger(), "Data save folder created at " << data_dir);
     }
     newdata_folder_ = data_dir + "/" + curdatetime_;
   }
 
-  ROS_INFO("Finished init cam_lidar_calibration");
+  RCLCPP_INFO(node_->get_logger(), "Finished init cam_lidar_calibration");
 }
 
-void FeatureExtractor::callback_camerainfo(const sensor_msgs::CameraInfo::ConstPtr& msg)
+void FeatureExtractor::callback_camerainfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg)
 {
-  i_params_.cameramat.at<double>(0, 0) = msg->K[0];
-  i_params_.cameramat.at<double>(0, 2) = msg->K[2];
-  i_params_.cameramat.at<double>(1, 1) = msg->K[4];
-  i_params_.cameramat.at<double>(1, 2) = msg->K[5];
+  i_params_.cameramat.at<double>(0, 0) = msg->k[0];
+  i_params_.cameramat.at<double>(0, 2) = msg->k[2];
+  i_params_.cameramat.at<double>(1, 1) = msg->k[4];
+  i_params_.cameramat.at<double>(1, 2) = msg->k[5];
   i_params_.cameramat.at<double>(2, 2) = 1;
 
-  i_params_.distcoeff.at<double>(0) = msg->D[0];
-  i_params_.distcoeff.at<double>(1) = msg->D[1];
-  i_params_.distcoeff.at<double>(2) = msg->D[2];
-  i_params_.distcoeff.at<double>(3) = msg->D[3];
+  i_params_.distcoeff.at<double>(0) = msg->d[0];
+  i_params_.distcoeff.at<double>(1) = msg->d[1];
+  i_params_.distcoeff.at<double>(2) = msg->d[2];
+  i_params_.distcoeff.at<double>(3) = msg->d[3];
 
   i_params_.image_size = std::make_pair(msg->width, msg->height);
 
@@ -156,25 +242,27 @@ void FeatureExtractor::callback_camerainfo(const sensor_msgs::CameraInfo::ConstP
   }
   else
   {
-    ROS_FATAL_STREAM("Camera model " << msg->distortion_model << " not supported");
+    RCLCPP_FATAL_STREAM(node_->get_logger(), "Camera model " << msg->distortion_model << " not supported");
   }
   valid_camera_info_ = true;
 }
 
-bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res)
+bool FeatureExtractor::serviceCB(
+    const std::shared_ptr<srv::Optimise::Request> req,
+    std::shared_ptr<srv::Optimise::Response> res)
 {
-  switch (req.operation)
+  switch (req->operation)
   {
-    case Optimise::Request::CAPTURE:
+    case srv::Optimise::Request::CAPTURE:
       num_of_pc_frames_ = 0;
-      ROS_INFO("Capturing sample");
+      RCLCPP_INFO(node_->get_logger(), "Capturing sample");
       break;
-    case Optimise::Request::CAPTURE_BCKGRND:
+    case srv::Optimise::Request::CAPTURE_BCKGRND:
       background_pc_samples_.clear();
-      ROS_INFO("Capturing background pointcloud");
+      RCLCPP_INFO(node_->get_logger(), "Capturing background pointcloud");
       break;
-    case Optimise::Request::DISCARD:
-      ROS_INFO("Discarding last sample");
+    case srv::Optimise::Request::DISCARD:
+      RCLCPP_INFO(node_->get_logger(), "Discarding last sample");
       if (!optimiser_->samples.empty())
       {
         num_samples_--;
@@ -185,12 +273,15 @@ bool FeatureExtractor::serviceCB(Optimise::Request& req, Optimise::Response& res
   }
 
   publishBoardPointCloud();
-  flag = req.operation;  // read flag published by rviz calibration panel
+  flag = req->operation;  // read flag published by rviz calibration panel
 
   // Wait for operation to complete
-  while (flag == Optimise::Request::CAPTURE || flag == Optimise::Request::CAPTURE_BCKGRND) {}
+  while (flag == srv::Optimise::Request::CAPTURE || flag == srv::Optimise::Request::CAPTURE_BCKGRND)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 
-  res.samples = optimiser_->samples.size();
+  res->samples = optimiser_->samples.size();
   return true;
 }
 
@@ -199,16 +290,15 @@ bool compare_voq(const SetAssess& a, const SetAssess& b)
   return a.voq < b.voq;
 }
 
-void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
-                                actionlib::SimpleActionServer<RunOptimiseAction>* as)
+void FeatureExtractor::optimise(const std::shared_ptr<rclcpp_action::ServerGoalHandle<action::RunOptimise>> goal_handle)
 {
-  ROS_INFO("Starting FeatureExtractor::optimise");
+  RCLCPP_INFO(node_->get_logger(), "Starting FeatureExtractor::optimise");
 
   std::string curdatetime_ = getDateTime();
 
   if (import_samples)
   {
-    ROS_INFO_STREAM("Reading file: " << import_path_);
+    RCLCPP_INFO_STREAM(node_->get_logger(), "Reading file: " << import_path_);
     std::ifstream read_samples(import_path_);
 
     optimiser_->samples.resize(0);
@@ -277,7 +367,7 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
     }
 
     read_samples.close();
-    ROS_INFO_STREAM(optimiser_->samples.size() << " samples imported");
+    RCLCPP_INFO_STREAM(node_->get_logger(), optimiser_->samples.size() << " samples imported");
   }
   else
   {
@@ -313,13 +403,13 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
     }
 
     save_samples.close();
-    ROS_INFO_STREAM("Samples written to file: " << savesamplespath);
-    ROS_INFO_STREAM("All " << optimiser_->samples.size() << " samples saved");
+    RCLCPP_INFO_STREAM(node_->get_logger(), "Samples written to file: " << savesamplespath);
+    RCLCPP_INFO_STREAM(node_->get_logger(), "All " << optimiser_->samples.size() << " samples saved");
   }
 
   if (optimiser_->samples.size() < 3)
   {
-    ROS_ERROR("Less than 3 samples captured or imported.");
+    RCLCPP_ERROR(node_->get_logger(), "Less than 3 samples captured or imported.");
     return;
   }
 
@@ -370,8 +460,10 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
     }
   }
 
-  std::srand(std::time(0));
-  std::random_shuffle(optimiser_->sets.begin(), optimiser_->sets.end());
+  // Use modern C++17 shuffle instead of deprecated random_shuffle
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(optimiser_->sets.begin(), optimiser_->sets.end(), g);
 
   // Generate the top num_lowestvoq_ sets of lowest VOQ scores
   int num_assessed = 0;
@@ -448,19 +540,19 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
   {
     optimiser_->top_sets.push_back(sa.set);
   }
-  ROS_INFO_STREAM("voq range: " << calib_list.front().voq << "-" << calib_list.back().voq);
-  ROS_INFO_STREAM("Number of assessed sets: " << num_assessed);
-  ROS_INFO_STREAM(optimiser_->top_sets.size() << " selected sets for optimisation");
-  ROS_INFO_STREAM("Time taken: " << timer_assess.toc() << "s ");
+  RCLCPP_INFO_STREAM(node_->get_logger(), "voq range: " << calib_list.front().voq << "-" << calib_list.back().voq);
+  RCLCPP_INFO_STREAM(node_->get_logger(), "Number of assessed sets: " << num_assessed);
+  RCLCPP_INFO_STREAM(node_->get_logger(), optimiser_->top_sets.size() << " selected sets for optimisation");
+  RCLCPP_INFO_STREAM(node_->get_logger(), "Time taken: " << timer_assess.toc() << "s ");
 
   std::ofstream output_csv;
   std::string outpath = newdata_folder_ + "/calibration_" + curdatetime_ + ".csv";
-  ROS_INFO_STREAM("Calibration results will be saved at: " << outpath);
+  RCLCPP_INFO_STREAM(node_->get_logger(), "Calibration results will be saved at: " << outpath);
   output_csv.open(outpath, std::ios_base::out | std::ios_base::trunc);
   output_csv << "roll,pitch,yaw,x,y,z\n";
   output_csv.close();
 
-  ROS_INFO("====== START CALIBRATION ======\n");
+  RCLCPP_INFO(node_->get_logger(), "====== START CALIBRATION ======\n");
 
   printf("Computing calibration results (roll,pitch,yaw,x,y,z) for each of the %d lowest voq sets\n",
          optimiser_->top_sets.size());
@@ -487,9 +579,16 @@ void FeatureExtractor::optimise(const RunOptimiseGoalConstPtr& goal,
   }
 
   std::cout << "Optimisation Completed in " << timer_all.toc() << "s\n" << std::endl;
-  ROS_INFO("====== END ======");
+  RCLCPP_INFO(node_->get_logger(), "====== END ======");
 
-  ros::shutdown();
+  // Send action result
+  auto result = std::make_shared<action::RunOptimise::Result>();
+  geometry_msgs::msg::Transform transform;
+  // Set transform values from opt_result if needed
+  result->transform = transform;
+  goal_handle->succeed(result);
+  
+  rclcpp::shutdown();
   return;
 }
 
@@ -502,16 +601,20 @@ void FeatureExtractor::publishBoardPointCloud()
   {
     pc += *board;
   }
-  board_cloud_pub_.publish(pc);
+  sensor_msgs::msg::PointCloud2 cloud_msg;
+  pcl::toROSMsg(pc, cloud_msg);
+  cloud_msg.header.frame_id = lidar_frame_;
+  cloud_msg.header.stamp = node_->now();
+  board_cloud_pub_->publish(cloud_msg);
 }
 
-geometry_msgs::Quaternion normalToQuaternion(const cv::Point3d& normal)
+geometry_msgs::msg::Quaternion normalToQuaternion(const cv::Point3d& normal)
 {
   // Convert to Eigen vector
   Eigen::Vector3d eigen_normal(normal.x, normal.y, normal.z);
   Eigen::Vector3d axis(1, 0, 0);
   auto eigen_quat = Eigen::Quaterniond::FromTwoVectors(axis, eigen_normal);
-  geometry_msgs::Quaternion quat;
+  geometry_msgs::msg::Quaternion quat;
   quat.w = eigen_quat.w();
   quat.x = eigen_quat.x();
   quat.y = eigen_quat.y();
@@ -520,31 +623,36 @@ geometry_msgs::Quaternion normalToQuaternion(const cv::Point3d& normal)
   return quat;
 }
 
-void FeatureExtractor::boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level)
+void FeatureExtractor::boundsCB(const rclcpp::Parameter& param)
 {
-  // Read the values corresponding to the motion of slider bars in reconfigure
-  // gui
-  bounds_ = config;
-  ROS_INFO("Reconfigure Request: %lf %lf %lf %lf %lf %lf %d %lf", config.x_min, config.x_max, config.y_min,
-           config.y_max, config.z_min, config.z_max, config.k, config.z, config.voxel_res);
+  // ROS2 Note: Bounds are now updated via parameter callbacks
+  // This function is kept for API compatibility but parameters are handled differently
+  bounds_.x_min = node_->get_parameter("bounds.x_min").as_double();
+  bounds_.x_max = node_->get_parameter("bounds.x_max").as_double();
+  bounds_.y_min = node_->get_parameter("bounds.y_min").as_double();
+  bounds_.y_max = node_->get_parameter("bounds.y_max").as_double();
+  bounds_.z_min = node_->get_parameter("bounds.z_min").as_double();
+  bounds_.z_max = node_->get_parameter("bounds.z_max").as_double();
+  RCLCPP_INFO(node_->get_logger(), "Bounds updated: x[%lf,%lf] y[%lf,%lf] z[%lf,%lf]",
+           bounds_.x_min, bounds_.x_max, bounds_.y_min, bounds_.y_max, bounds_.z_min, bounds_.z_max);
 }
 
 void FeatureExtractor::visualiseSamples()
 {
-  visualization_msgs::MarkerArray vis_array;
+  visualization_msgs::msg::MarkerArray vis_array;
 
   int id = 1;
-  visualization_msgs::Marker clear;
-  clear.action = visualization_msgs::Marker::DELETEALL;
+  visualization_msgs::msg::Marker clear;
+  clear.action = visualization_msgs::msg::Marker::DELETEALL;
   vis_array.markers.push_back(clear);
   for (auto& sample : optimiser_->samples)
   {
-    visualization_msgs::Marker lidar_board, lidar_normal;
+    visualization_msgs::msg::Marker lidar_board, lidar_normal;
 
     lidar_board.header.frame_id = lidar_normal.header.frame_id = lidar_frame_;
-    lidar_board.action = lidar_normal.action = visualization_msgs::Marker::ADD;
-    lidar_board.type = visualization_msgs::Marker::LINE_STRIP;
-    lidar_normal.type = visualization_msgs::Marker::ARROW;
+    lidar_board.action = lidar_normal.action = visualization_msgs::msg::Marker::ADD;
+    lidar_board.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    lidar_normal.type = visualization_msgs::msg::Marker::ARROW;
 
     lidar_normal.scale.x = 0.5;
     lidar_normal.scale.y = 0.04;
@@ -571,7 +679,7 @@ void FeatureExtractor::visualiseSamples()
     lidar_board.pose.orientation.w = 1.0;
     for (auto& c : sample.lidar_corners)
     {
-      geometry_msgs::Point p;
+      geometry_msgs::msg::Point p;
       p.x = c.x / 1000;
       p.y = c.y / 1000;
       p.z = c.z / 1000;
@@ -581,7 +689,7 @@ void FeatureExtractor::visualiseSamples()
     lidar_board.id = id++;
     vis_array.markers.push_back(lidar_board);
   }
-  samples_pub_.publish(vis_array);
+  samples_pub_->publish(vis_array);
 }
 
 void FeatureExtractor::passthrough(const PointCloud::ConstPtr& input_pc, PointCloud::Ptr& output_pc)
@@ -674,7 +782,7 @@ auto FeatureExtractor::chessboardProjection(const std::vector<cv::Point2d>& corn
   }
   else
   {
-    ROS_FATAL("No msgs from /camera_info - check camera_info topic in "
+    RCLCPP_FATAL(node_->get_logger(), "No msgs from /camera_info - check camera_info topic in "
               "cfg/params.yaml is correct and is being published");
   }
 
@@ -720,7 +828,7 @@ auto FeatureExtractor::chessboardProjection(const std::vector<cv::Point2d>& corn
 }
 
 std::tuple<std::vector<cv::Point3d>, cv::Mat>
-FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
+FeatureExtractor::locateChessboard(const sensor_msgs::msg::Image::ConstSharedPtr& image)
 {
   // Convert to OpenCV image object
   cv_bridge::CvImagePtr cv_ptr;
@@ -736,13 +844,13 @@ FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
 
   if (!pattern_found)
   {
-    ROS_WARN("No chessboard found");
+    RCLCPP_WARN(node_->get_logger(), "No chessboard found");
     std::vector<cv::Point3d> empty_corners;
     cv::Mat empty_normal;
     return std::make_tuple(empty_corners, empty_normal);
   }
 
-  ROS_INFO("Chessboard found");
+  RCLCPP_INFO(node_->get_logger(), "Chessboard found");
 
   // Find corner points with sub-pixel accuracy
   // This throws an exception if the corner points are doubles and not floats!?!
@@ -768,7 +876,7 @@ FeatureExtractor::locateChessboard(const sensor_msgs::Image::ConstPtr& image)
   }
 
   // Publish the image with all the features marked in it
-  ROS_INFO("Publishing chessboard image");
+  RCLCPP_INFO(node_->get_logger(), "Publishing chessboard image");
   image_publisher_.publish(cv_ptr->toImageMsg());
   return std::make_tuple(corner_vectors, chessboard_normal);
 }
@@ -794,7 +902,7 @@ FeatureExtractor::extractBoard(const PointCloud::Ptr& cloud, OptimisationSample&
   PointCloud::Ptr cloud_projected(new PointCloud);
   if (coefficients->values.size() < 3)
   {
-    ROS_WARN("Chessboard plane segmentation failed");
+    RCLCPP_WARN(node_->get_logger(), "Chessboard plane segmentation failed");
     cv::Point3d null_normal;
     return std::make_tuple(cloud_projected, null_normal);
   }
@@ -927,9 +1035,13 @@ void FeatureExtractor::distoffset_passthrough(const PointCloud::ConstPtr& input_
 }
 
 // Extract features of interest
-void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& image,
-                                               const PointCloud::ConstPtr& pointcloud)
+void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::msg::Image::ConstSharedPtr& image,
+                                               const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointcloud_msg)
 {
+  // Convert PointCloud2 to PCL PointCloud
+  PointCloud::Ptr pointcloud(new PointCloud);
+  pcl::fromROSMsg(*pointcloud_msg, *pointcloud);
+
   // Check if we have deduced the lidar ring count
   if (i_params_.lidar_ring_count == 0)
   {
@@ -946,14 +1058,17 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
   PointCloud::Ptr distoffset_cloud(new PointCloud);
   distoffset_passthrough(pointcloud, distoffset_cloud);
-  experimental_region_pub_.publish(distoffset_cloud);
+  
+  sensor_msgs::msg::PointCloud2 distoffset_msg;
+  pcl::toROSMsg(*distoffset_cloud, distoffset_msg);
+  experimental_region_pub_->publish(distoffset_msg);
 
-  if (flag == Optimise::Request::CAPTURE_BCKGRND)
+  if (flag == srv::Optimise::Request::CAPTURE_BCKGRND)
   {
     background_pc_samples_.push_back(distoffset_cloud);
-    flag = Optimise::Request::READY;  // Reset the capture flag
+    flag = srv::Optimise::Request::READY;  // Reset the capture flag
     num_of_pc_frames_ = 0;
-    ROS_INFO("Ready to capture sample");
+    RCLCPP_INFO(node_->get_logger(), "Ready to capture sample");
     return;
   }
 
@@ -979,21 +1094,19 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
       subtracted_pc->push_back((*distoffset_cloud)[newPointIdxVector[i]]);
     }
 
-    // Create the filtering object
-    pcl::StatisticalOutlierRemoval<pcl::PointXYZIR> sor;
-    sor.setInputCloud(subtracted_pc);
-    sor.setMeanK(bounds_.k);
-    sor.setStddevMulThresh(bounds_.z);
-    sor.filter(*cloud_filtered);
+    // Use custom statistical outlier removal (avoids FLANN issues)
+    statisticalOutlierRemoval<pcl::PointXYZIR>(subtracted_pc, cloud_filtered, bounds_.k, bounds_.z);
 
     // Publish the board point cloud after background subtraction
     cloud_filtered->header.frame_id = lidar_frame_;
-    subtracted_cloud_pub_.publish(cloud_filtered);
+    sensor_msgs::msg::PointCloud2 filtered_msg2;
+    pcl::toROSMsg(*cloud_filtered, filtered_msg2);
+    subtracted_cloud_pub_->publish(filtered_msg2);
   }
 
-  if (flag == Optimise::Request::CAPTURE)
+  if (flag == srv::Optimise::Request::CAPTURE)
   {
-    ROS_INFO("Processing...");
+    RCLCPP_INFO(node_->get_logger(), "Processing...");
 
     if (num_of_pc_frames_ == frames_to_capture_)
     {
@@ -1195,16 +1308,16 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         if ((abs(avg_w0 - board_width_) > board_width_ * 0.1) | (abs(avg_w1 - board_width_) > board_width_ * 0.1) |
             (abs(avg_h0 - board_height_) > board_height_ * 0.1) | (abs(avg_h1 - board_height_) > board_height_ * 0.1))
         {
-          // ROS_INFO("Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try capturing again");
+          // RCLCPP_INFO(node_->get_logger(), "Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try capturing again");
 
-          ROS_ERROR("Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try "
+          RCLCPP_ERROR(node_->get_logger(), "Plane fitting error, LiDAR board dimensions incorrect; discarding sample - try "
                     "capturing again");
-          flag = Optimise::Request::READY;
-          ROS_INFO("Ready for capture\n");
+          flag = srv::Optimise::Request::READY;
+          RCLCPP_INFO(node_->get_logger(), "Ready for capture\n");
           return;
         }
 
-        ROS_INFO("Found line coefficients and outlined chessboard");
+        RCLCPP_INFO(node_->get_logger(), "Found line coefficients and outlined chessboard");
 
         // Push this sample to the optimiser
         optimiser_->samples.push_back(sample);
@@ -1214,30 +1327,30 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         cv_ptr = cv_bridge::toCvCopy(image, sensor_msgs::image_encodings::BGR8);
 
         // Save image
-        if (boost::filesystem::create_directory(newdata_folder_))
+        if (std::filesystem::create_directories(newdata_folder_))
         {
-          boost::filesystem::create_directory(newdata_folder_ + "/images");
-          boost::filesystem::create_directory(newdata_folder_ + "/pcd");
-          ROS_INFO_STREAM("Save data folder created at " << newdata_folder_);
+          std::filesystem::create_directories(newdata_folder_ + "/images");
+          std::filesystem::create_directories(newdata_folder_ + "/pcd");
+          RCLCPP_INFO_STREAM(node_->get_logger(), "Save data folder created at " << newdata_folder_);
         }
 
         std::string img_filepath = newdata_folder_ + "/images/pose" + std::to_string(num_samples_) + ".png";
         std::string target_pcd_filepath = newdata_folder_ + "/pcd/pose" + std::to_string(num_samples_) + "_target.pcd";
         std::string full_pcd_filepath = newdata_folder_ + "/pcd/pose" + std::to_string(num_samples_) + "_full.pcd";
 
-        ROS_ASSERT(cv::imwrite(img_filepath, cv_ptr->image));
+        assert(cv::imwrite(img_filepath, cv_ptr->image));
         pcl::io::savePCDFileASCII(target_pcd_filepath, *cloud_filtered);
         pcl::io::savePCDFileASCII(full_pcd_filepath, *pointcloud);
-        ROS_INFO_STREAM("Image and pcd file saved");
+        RCLCPP_INFO_STREAM(node_->get_logger(), "Image and pcd file saved");
 
         if (num_samples_ == 1)
         {
           // Check if save_dir has camera_info topic saved
-          std::string pkg_path = ros::package::getPath("cam_lidar_calibration");
+          std::string pkg_path = ament_index_cpp::get_package_share_directory("cam_lidar_calibration");
 
           std::ofstream camera_info_file;
           std::string camera_info_path = pkg_path + "/cfg/camera_info.yaml";
-          ROS_INFO_STREAM("Camera_info saved at: " << camera_info_path);
+          RCLCPP_INFO_STREAM(node_->get_logger(), "Camera_info saved at: " << camera_info_path);
           camera_info_file.open(camera_info_path, std::ios_base::out | std::ios_base::trunc);
           std::string dist_model = (i_params_.fisheye_model) ? "fisheye" : "non-fisheye";
           camera_info_file << "distortion_model: \"" << dist_model << "\"\n";
@@ -1255,11 +1368,11 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
         }
       }
 
-      flag = Optimise::Request::READY;
+      flag = srv::Optimise::Request::READY;
       num_of_pc_frames_ = 0;
       num_invalid_samples_ = 0;
       samples_.clear();
-      ROS_INFO("Ready to capture sample");
+      RCLCPP_INFO(node_->get_logger(), "Ready to capture sample");
       return;
     }
     else
@@ -1267,9 +1380,9 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
       auto [corner_vectors, chessboard_normal] = locateChessboard(image);
       if (corner_vectors.size() == 0)
       {
-        flag = Optimise::Request::READY;
-        ROS_ERROR("Sample capture failed before averaging: can't detect chessboard in camera image");
-        ROS_INFO("Ready to capture sample");
+        flag = srv::Optimise::Request::READY;
+        RCLCPP_ERROR(node_->get_logger(), "Sample capture failed before averaging: can't detect chessboard in camera image");
+        RCLCPP_INFO(node_->get_logger(), "Ready to capture sample");
         return;
       }
 
@@ -1286,7 +1399,7 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
       if (cloud_projected->points.size() == 0)
       {
         // flag = Optimise::Request::READY;
-        ROS_INFO("Ready for capture\n");
+        RCLCPP_INFO(node_->get_logger(), "Ready for capture\n");
         return;
       }
       sample.lidar_normal = lidar_normal;
@@ -1326,9 +1439,9 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
 
       if (top_left.values.empty() | top_right.values.empty() | bottom_left.values.empty() | bottom_right.values.empty())
       {
-        ROS_ERROR("RANSAC unsuccessful, discarding sample - Need more lidar points on board");
-        flag = Optimise::Request::READY;
-        ROS_INFO("Ready for capture\n");
+        RCLCPP_ERROR(node_->get_logger(), "RANSAC unsuccessful, discarding sample - Need more lidar points on board");
+        flag = srv::Optimise::Request::READY;
+        RCLCPP_INFO(node_->get_logger(), "Ready for capture\n");
         return;
       }
 
@@ -1423,13 +1536,13 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::Image::ConstPt
             (abs(h0 - board_height_) > board_height_ * 0.1) | (abs(h1 - board_height_) > board_height_ * 0.1))
         {
           ++num_invalid_samples_;
-          ROS_INFO("Not a valid sample\n");
+          RCLCPP_INFO(node_->get_logger(), "Not a valid sample\n");
 
           if (num_invalid_samples_ > 5)
           {
-            ROS_ERROR("Please try a different pose");
-            flag = Optimise::Request::READY;
-            ROS_INFO("Ready for capture\n");
+            RCLCPP_ERROR(node_->get_logger(), "Please try a different pose");
+            flag = srv::Optimise::Request::READY;
+            RCLCPP_INFO(node_->get_logger(), "Ready for capture\n");
             return;
           }
         }

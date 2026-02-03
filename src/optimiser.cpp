@@ -19,7 +19,7 @@
 
 #include "cam_lidar_calibration/optimiser.h"
 
-#include <tf/transform_datatypes.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 
 #include "cam_lidar_calibration/point_xyzir.h"
 
@@ -443,7 +443,7 @@ bool Optimiser::optimise(RotationTranslation& opt_result, std::vector<Optimisati
 
   // Optimized rotation
   // Reset starting point of rotation genes
-  tf::Matrix3x3 rot;
+  tf2::Matrix3x3 rot;
   rot.setRPY(best_rotation_.roll, best_rotation_.pitch, best_rotation_.yaw);
 
   cv::Mat tmp_rot = (cv::Mat_<double>(3, 3) << rot.getRow(0)[0], rot.getRow(0)[1], rot.getRow(0)[2], rot.getRow(1)[0],
@@ -453,7 +453,7 @@ bool Optimiser::optimise(RotationTranslation& opt_result, std::vector<Optimisati
   cv::Mat cp_trans = tmp_rot * camera_centres_.t();
   cv::Mat trans_diff = lidar_centres_.t() - cp_trans;
   cv::Mat summed_diff;
-  cv::reduce(trans_diff, summed_diff, 1, CV_REDUCE_SUM, CV_64F);
+  cv::reduce(trans_diff, summed_diff, 1, cv::REDUCE_SUM, CV_64F);
   summed_diff = summed_diff / trans_diff.cols;
   const RotationTranslation initial_rotation_translation{ best_rotation_, summed_diff.at<double>(0),
                                                           summed_diff.at<double>(1), summed_diff.at<double>(2) };

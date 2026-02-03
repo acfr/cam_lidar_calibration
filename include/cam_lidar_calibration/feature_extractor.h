@@ -15,52 +15,54 @@
  * Author: Darren Tsai
  */
 
-#include <actionlib/server/simple_action_server.h>
-#include <cam_lidar_calibration/Optimise.h>
-#include <cam_lidar_calibration/RunOptimiseAction.h>
-#include <cam_lidar_calibration/boundsConfig.h>
-#include <cv_bridge/cv_bridge.h>
-#include <dynamic_reconfigure/server.h>
-#include <geometry_msgs/Quaternion.h>
-#include <image_transport/image_transport.h>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <cv_bridge/cv_bridge.hpp>
+#include <geometry_msgs/msg/quaternion.hpp>
+#include <geometry_msgs/msg/transform.hpp>
+#include <image_transport/image_transport.hpp>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
 #include <pcl/ModelCoefficients.h>
 #include <pcl/point_cloud.h>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <opencv2/core/mat.hpp>
 #include <opencv2/core/persistence.hpp>
 
+#include "cam_lidar_calibration/action/run_optimise.hpp"
+#include "cam_lidar_calibration/srv/optimise.hpp"
 #include "cam_lidar_calibration/load_params.h"
 #include "cam_lidar_calibration/optimiser.h"
 #include "cam_lidar_calibration/point_xyzir.h"
 
-typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
-typedef message_filters::Subscriber<pcl::PointCloud<pcl::PointXYZIR>> pc_sub_type;
+typedef message_filters::Subscriber<sensor_msgs::msg::Image> image_sub_type;
+typedef message_filters::Subscriber<sensor_msgs::msg::PointCloud2> pc_sub_type;
 
 namespace cam_lidar_calibration
 {
-geometry_msgs::Quaternion normalToQuaternion(const cv::Point3d& normal);
+geometry_msgs::msg::Quaternion normalToQuaternion(const cv::Point3d& normal);
 
 class FeatureExtractor
 {
 public:
-  FeatureExtractor();
+  explicit FeatureExtractor(rclcpp::Node::SharedPtr node);
   ~FeatureExtractor() = default;
 
-  void extractRegionOfInterest(const sensor_msgs::Image::ConstPtr& img,
-                               const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& pc);
-  bool serviceCB(Optimise::Request& req, Optimise::Response& res);
+  void extractRegionOfInterest(const sensor_msgs::msg::Image::ConstSharedPtr& img,
+                               const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pc);
+  bool serviceCB(const std::shared_ptr<srv::Optimise::Request> req, 
+                 std::shared_ptr<srv::Optimise::Response> res);
 
-  void optimise(const RunOptimiseGoalConstPtr& goal,
-                actionlib::SimpleActionServer<cam_lidar_calibration::RunOptimiseAction>* as);
+  void optimise(const std::shared_ptr<rclcpp_action::ServerGoalHandle<action::RunOptimise>> goal_handle);
 
   void visualiseSamples();
 
-  void boundsCB(cam_lidar_calibration::boundsConfig& config, uint32_t level);
+  void boundsCB(const rclcpp::Parameter& param);
 
   bool import_samples;
 
@@ -68,7 +70,7 @@ private:
   void passthrough(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
                    pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
 
-  std::tuple<std::vector<cv::Point3d>, cv::Mat> locateChessboard(const sensor_msgs::Image::ConstPtr& image);
+  std::tuple<std::vector<cv::Point3d>, cv::Mat> locateChessboard(const sensor_msgs::msg::Image::ConstSharedPtr& image);
 
   auto chessboardProjection(const std::vector<cv::Point2d>& corners, const cv_bridge::CvImagePtr& cv_ptr);
 
@@ -81,7 +83,7 @@ private:
   std::pair<pcl::ModelCoefficients, pcl::ModelCoefficients>
   findEdges(const pcl::PointCloud<pcl::PointXYZIR>::Ptr& edge_pair_cloud);
 
-  void callback_camerainfo(const sensor_msgs::CameraInfo::ConstPtr& msg);
+  void callback_camerainfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr& msg);
 
   void distoffset_passthrough(const pcl::PointCloud<pcl::PointXYZIR>::ConstPtr& input_pc,
                               pcl::PointCloud<pcl::PointXYZIR>::Ptr& output_pc);
@@ -90,6 +92,7 @@ private:
 
   int find_octant(float x, float y, float z);
 
+  rclcpp::Node::SharedPtr node_;
   std::shared_ptr<Optimiser> optimiser_;
   initial_parameters_t i_params_;
   double metreperpixel_cbdiag_;
@@ -99,9 +102,15 @@ private:
   double distance_offset_;
 
   int flag = 0;
-  cam_lidar_calibration::boundsConfig bounds_;
+  // ROS2 Note: bounds configuration will use parameters instead of dynamic_reconfigure
+  struct BoundsConfig {
+    double x_min, x_max, y_min, y_max, z_min, z_max;
+    int k;  // for statistical outlier removal mean K
+    double z;  // for statistical outlier removal stddev threshold
+    double voxel_res;  // voxel resolution for octree
+  } bounds_;
 
-  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, pcl::PointCloud<pcl::PointXYZIR>>
+  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::PointCloud2>
       ImageLidarSyncPolicy;
 
   std::shared_ptr<image_sub_type> image_sub_;
@@ -112,21 +121,21 @@ private:
   int num_samples_ = 0;
 
   std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> pc_samples_;
-  ros::Publisher board_cloud_pub_, subtracted_cloud_pub_, experimental_region_pub_;
-  ros::Publisher samples_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr board_cloud_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr subtracted_cloud_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr experimental_region_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr samples_pub_;
   image_transport::Publisher image_publisher_;
-  ros::ServiceServer optimise_service_;
-  ros::Subscriber camera_info_sub_;
+  rclcpp::Service<srv::Optimise>::SharedPtr optimise_service_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
 
-  boost::shared_ptr<image_transport::ImageTransport> it_;
-  boost::shared_ptr<image_transport::ImageTransport> it_p_;
-  boost::shared_ptr<dynamic_reconfigure::Server<cam_lidar_calibration::boundsConfig>> server_;
+  std::shared_ptr<image_transport::ImageTransport> it_;
+  std::shared_ptr<image_transport::ImageTransport> it_p_;
+  std::shared_ptr<rclcpp::ParameterEventHandler> param_handler_;
 
   std::string curdatetime_;
   std::string newdata_folder_;
   bool valid_camera_info_;
-  ros::NodeHandle private_nh_;
-  ros::NodeHandle public_nh_;
 
   std::vector<pcl::PointCloud<pcl::PointXYZIR>::Ptr> background_pc_samples_;
   double board_width_ = 0.0f;

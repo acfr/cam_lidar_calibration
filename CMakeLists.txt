@@ -1,28 +1,37 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.8)
 project(cam_lidar_calibration)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-find_package(catkin REQUIRED COMPONENTS
-  actionlib
-  actionlib_msgs
-  cv_bridge
-  dynamic_reconfigure
-  eigen_conversions
-  image_transport
-  geometry_msgs
-  message_generation
-  nodelet
-  pcl_conversions
-  pcl_ros
-  roscpp
-  rospy
-  rviz
-  sensor_msgs
-  std_msgs
-  roslint
-  )
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-error")
+
+# Find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(eigen3_cmake_module REQUIRED)
+find_package(image_transport REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(pcl_ros REQUIRED)
+find_package(rclpy REQUIRED)
+find_package(rviz_common REQUIRED)
+find_package(rviz_default_plugins REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(message_filters REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_eigen REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 find_package(OpenCV REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
@@ -32,108 +41,141 @@ find_package(Qt5 REQUIRED Core Widgets)
 ## Setup include directories
 include_directories(
   include
-  ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
-  ${Eigen_INCLUDE_DIRS}
-  )
-
-link_directories(${catkin_LIBRARY_DIRS})
+  ${Eigen3_INCLUDE_DIRS}
+)
 
 add_definitions(-DQT_NO_KEYWORDS)
-
 set(CMAKE_AUTOMOC ON)
 
-add_action_files(
-  FILES
-  RunOptimise.action
-  )
-add_service_files(
-  FILES
-  Optimise.srv
-  )
-generate_messages(
+# Generate interfaces
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "action/RunOptimise.action"
+  "srv/Optimise.srv"
   DEPENDENCIES
-  actionlib_msgs
   geometry_msgs
   std_msgs
   sensor_msgs
-  )
-generate_dynamic_reconfigure_options(
-  cfg/bounds.cfg
-  )
-catkin_package(
-  INCLUDE_DIRS include
-  CATKIN_DEPENDS nodelet
-  roscpp
-  rospy
-  std_msgs
-  sensor_msgs
-  message_runtime
-#    libutransform
-  )
+)
 
-add_library(cam_lidar_calibration
-  src/cam_lidar_panel.cpp
+# Get typesupport target name for the generated interfaces
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+set(dependencies
+  rclcpp
+  rclcpp_action
+  rclcpp_components
+  cv_bridge
+  image_transport
+  geometry_msgs
+  pcl_conversions
+  pcl_ros
+  sensor_msgs
+  std_msgs
+  message_filters
+  tf2
+  tf2_ros
+  tf2_eigen
+  tf2_geometry_msgs
+  ament_index_cpp
+  visualization_msgs
+)
+
+# Library
+add_library(cam_lidar_calibration_core SHARED
   src/feature_extractor.cpp
   src/load_params.cpp
   src/optimiser.cpp
-        )
-target_link_libraries(cam_lidar_calibration
-  ${catkin_LIBRARIES}
+)
+target_link_libraries(cam_lidar_calibration_core
   ${OpenCV_LIBS}
-  ${Eigen_LIBRARIES}
+  ${Eigen3_LIBRARIES}
   Qt5::Widgets
-  )
+)
+ament_target_dependencies(cam_lidar_calibration_core ${dependencies})
+target_link_libraries(cam_lidar_calibration_core "${cpp_typesupport_target}")
 
+# Feature extraction node
 add_executable(feature_extraction_node src/feature_extraction_node.cpp)
 target_link_libraries(feature_extraction_node
-        cam_lidar_calibration
-        ${catkin_LIBRARIES}
-        ${OpenCV_LIBS}
-        ${Eigen_LIBRARIES}
-        )
+  cam_lidar_calibration_core
+  ${OpenCV_LIBS}
+  ${Eigen3_LIBRARIES}
+)
+ament_target_dependencies(feature_extraction_node ${dependencies})
+target_link_libraries(feature_extraction_node "${cpp_typesupport_target}")
 
+# Assessment node
 add_executable(assess_node src/assess_calibration.cpp)
 target_link_libraries(assess_node
-        cam_lidar_calibration
-        ${catkin_LIBRARIES}
-        ${OpenCV_LIBS}
-        )
+  cam_lidar_calibration_core
+  ${OpenCV_LIBS}
+  ${Eigen3_LIBRARIES}
+)
+ament_target_dependencies(assess_node ${dependencies})
+target_link_libraries(assess_node "${cpp_typesupport_target}")
 
-#############
-## Install ##
-#############
+# RViz panel library (component)
+add_library(cam_lidar_panel SHARED
+  src/cam_lidar_panel.cpp
+)
+target_link_libraries(cam_lidar_panel
+  cam_lidar_calibration_core
+  Qt5::Widgets
+)
+ament_target_dependencies(cam_lidar_panel ${dependencies} rviz_common rviz_default_plugins)
+target_link_libraries(cam_lidar_panel "${cpp_typesupport_target}")
 
-## Mark the nodelet library for installations
+# Install
 install(TARGETS
   feature_extraction_node
-  cam_lidar_calibration
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+  assess_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
-## Mark other files for installation (e.g. launch and bag files, etc.)
-install(FILES nodelet_definition.xml plugin_description.xml
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+install(TARGETS
+  cam_lidar_calibration_core
+  cam_lidar_panel
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
 
-install(DIRECTORY include/${PROJECT_NAME}/
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-  FILES_MATCHING PATTERN "*.h"
-  )
+install(DIRECTORY include/
+  DESTINATION include/${PROJECT_NAME}
+)
+
+install(FILES plugin_description.xml
+  DESTINATION share/${PROJECT_NAME}
+)
 
 install(DIRECTORY launch/
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
-  )
+  DESTINATION share/${PROJECT_NAME}/launch
+)
 
 install(DIRECTORY cfg/
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cfg
-  )
+  DESTINATION share/${PROJECT_NAME}/cfg
+)
 
 install(DIRECTORY rviz/
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
-  )
-
-catkin_install_python(PROGRAMS
-  scripts/visualise_results.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  DESTINATION share/${PROJECT_NAME}/rviz
 )
+
+install(DIRECTORY data/
+  DESTINATION share/${PROJECT_NAME}/data
+)
+
+install(PROGRAMS
+  scripts/visualise_results.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_export_include_directories(include)
+ament_export_libraries(cam_lidar_calibration_core cam_lidar_panel)
+ament_export_dependencies(${dependencies})
+ament_package()

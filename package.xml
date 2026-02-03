@@ -1,33 +1,51 @@
-<package format="2">
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>cam_lidar_calibration</name>
   <version>0.0.1</version>
   <description>camera lidar calibration</description>
   <maintainer email="j.justin@acfr.usyd.edu.au">Jerome Justin</maintainer>
-  <author>Darrent Tsai </author>
+  <author>Darrent Tsai</author>
   <license>Apache License 2.0</license>
 
-  <buildtool_depend>catkin</buildtool_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
-  <depend>actionlib</depend>
-  <depend>actionlib_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>rclcpp_components</depend>
   <depend>cv_bridge</depend>
-  <depend>eigen_conversions</depend>
+  <depend>eigen3_cmake_module</depend>
   <depend>image_transport</depend>
   <depend>libnlopt-dev</depend>
   <depend>libpcl-all-dev</depend>
-  <depend>message_generation</depend>
-  <depend>message_runtime</depend>
   <depend>nav_msgs</depend>
-  <depend>nodelet</depend>
-  <depend>OpenCV</depend>
-  <depend>roscpp</depend>
-  <depend>rospy</depend>
-  <depend>rviz</depend>
+  <depend>libopencv-dev</depend>
+  <depend>rclpy</depend>
+  <depend>rviz2</depend>
+  <depend>rviz_common</depend>
+  <depend>rviz_default_plugins</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>pcl_conversions</depend>
+  <depend>pcl_ros</depend>
+  <depend>message_filters</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_eigen</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>ament_index_cpp</depend>
+  <depend>visualization_msgs</depend>
+  
+  <build_depend>rosidl_default_generators</build_depend>
+  
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  
+  <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
-    <nodelet plugin="${prefix}/nodelet_definition.xml"/>
+    <build_type>ament_cmake</build_type>
     <rviz plugin="${prefix}/plugin_description.xml"/>
-</export>
+  </export>
 </package>

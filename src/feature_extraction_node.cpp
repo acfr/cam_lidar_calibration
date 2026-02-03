@@ -15,44 +15,73 @@
  * Author: Darren Tsai
  */
 
-#include <actionlib/client/simple_action_client.h>
-#include <actionlib/server/simple_action_server.h>
-#include <cam_lidar_calibration/RunOptimiseAction.h>
-
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include "cam_lidar_calibration/action/run_optimise.hpp"
 #include "cam_lidar_calibration/feature_extractor.h"
 
-using actionlib::SimpleActionServer;
 using cam_lidar_calibration::FeatureExtractor;
 
 int main(int argc, char** argv)
 {
-  // Initialize Node and handles
-  ros::init(argc, argv, "FeatureExtractor");
-  ros::NodeHandle n;
-
-  FeatureExtractor feature_extractor;
-  SimpleActionServer<cam_lidar_calibration::RunOptimiseAction> optimise_action(
-      n, "run_optimise", boost::bind(&FeatureExtractor::optimise, feature_extractor, _1, &optimise_action), false);
-  optimise_action.start();
-
-  ros::Rate loop_rate(10);
-
-  ros::AsyncSpinner spinner(4);
-  spinner.start();
-
-  while (ros::ok())
+  // Initialize ROS2
+  rclcpp::init(argc, argv);
+  
+  // Create node
+  auto node = std::make_shared<rclcpp::Node>("feature_extractor");
+  
+  // Create feature extractor
+  auto feature_extractor = std::make_shared<FeatureExtractor>(node);
+  
+  // Create action server
+  using RunOptimise = cam_lidar_calibration::action::RunOptimise;
+  auto action_server = rclcpp_action::create_server<RunOptimise>(
+    node,
+    "run_optimise",
+    [](const rclcpp_action::GoalUUID & uuid, std::shared_ptr<const RunOptimise::Goal> goal) {
+      (void)uuid;
+      (void)goal;
+      return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+    },
+    [](const std::shared_ptr<rclcpp_action::ServerGoalHandle<RunOptimise>> goal_handle) {
+      (void)goal_handle;
+      return rclcpp_action::CancelResponse::ACCEPT;
+    },
+    [feature_extractor](const std::shared_ptr<rclcpp_action::ServerGoalHandle<RunOptimise>> goal_handle) {
+      feature_extractor->optimise(goal_handle);
+    }
+  );
+  
+  // Create executor
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(node);
+  
+  // Run in separate thread to allow for visualization loop
+  std::thread executor_thread([&executor]() { executor.spin(); });
+  
+  // Main loop for visualization
+  rclcpp::Rate loop_rate(10);
+  while (rclcpp::ok())
   {
-    if (feature_extractor.import_samples)
+    if (feature_extractor->import_samples)
     {
-      actionlib::SimpleActionClient<cam_lidar_calibration::RunOptimiseAction> action_client("run_optimise", true);
-      action_client.waitForServer();
-      cam_lidar_calibration::RunOptimiseGoal goal;
-      action_client.sendGoal(goal);
+      using RunOptimiseAction = cam_lidar_calibration::action::RunOptimise;
+      auto action_client = rclcpp_action::create_client<RunOptimiseAction>(node, "run_optimise");
+      
+      if (action_client->wait_for_action_server(std::chrono::seconds(10)))
+      {
+        auto goal_msg = RunOptimiseAction::Goal();
+        action_client->async_send_goal(goal_msg);
+      }
       break;
     }
-
-    feature_extractor.visualiseSamples();
+    
+    feature_extractor->visualiseSamples();
     loop_rate.sleep();
   }
+  
+  executor.cancel();
+  executor_thread.join();
+  rclcpp::shutdown();
   return 0;
 }

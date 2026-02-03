@@ -13,23 +13,25 @@
  * limitations under the License.
  * 
  * Author: Darren Tsai
+ * Modified for ROS2 Jazzy
  */
 
-#include <cv_bridge/cv_bridge.h>
-#include <geometry_msgs/TransformStamped.h>
+#include <cv_bridge/cv_bridge.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/point_cloud.h>
-#include <ros/ros.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <std_msgs/Float64MultiArray.h>
+#include <pcl/common/transforms.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_msgs/msg/float64_multi_array.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2/LinearMath/Vector3.h>
-#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
-#include <tf_conversions/tf_eigen.h>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <iostream>
 #include <numeric>
+#include <opencv2/opencv.hpp>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
@@ -137,14 +139,18 @@ cv::Mat operator*(const RotationTranslation& lhs, const cv::Point3d& rhs)
   return cv::Mat(rotated).reshape(1);
 }
 
-class AssessCalibration
+class AssessCalibration : public rclcpp::Node
 {
 public:
-  AssessCalibration() : nh_("~")
+  AssessCalibration() : Node("assess_calibration")
   {
-    nh_.getParam("visualise_pose_num", visualise_pose_num);
-    nh_.getParam("visualise", visualise);
-    nh_.getParam("csv", csv);
+    this->declare_parameter("visualise_pose_num", 1);
+    this->declare_parameter("visualise", false);
+    this->declare_parameter("csv", "");
+    
+    visualise_pose_num = this->get_parameter("visualise_pose_num").as_int();
+    visualise = this->get_parameter("visualise").as_bool();
+    csv = this->get_parameter("csv").as_string();
 
     const size_t last_slash_idx = csv.rfind('/');
     if (std::string::npos != last_slash_idx)
@@ -152,14 +158,21 @@ public:
       data_dir = csv.substr(0, last_slash_idx);
     }
 
-    public_nh_.getParam("distortion_model", distortion_model);
-    public_nh_.getParam("height", height);
-    public_nh_.getParam("width", width);
-    public_nh_.getParam("K", K);
-    public_nh_.getParam("D", D);
-
-    public_nh_.getParam("chessboard/board_dimension/width", board_dimensions.width);
-    public_nh_.getParam("chessboard/board_dimension/height", board_dimensions.height);
+    this->declare_parameter("distortion_model", "plumb_bob");
+    this->declare_parameter("height", 0);
+    this->declare_parameter("width", 0);
+    this->declare_parameter("K", std::vector<double>());
+    this->declare_parameter("D", std::vector<double>());
+    this->declare_parameter("chessboard.board_dimension.width", 0.0);
+    this->declare_parameter("chessboard.board_dimension.height", 0.0);
+    
+    distortion_model = this->get_parameter("distortion_model").as_string();
+    height = this->get_parameter("height").as_int();
+    width = this->get_parameter("width").as_int();
+    K = this->get_parameter("K").as_double_array();
+    D = this->get_parameter("D").as_double_array();
+    board_dimensions.width = this->get_parameter("chessboard.board_dimension.width").as_double();
+    board_dimensions.height = this->get_parameter("chessboard.board_dimension.height").as_double();
 
     import_samples(data_dir + "/poses.csv");
 
@@ -177,16 +190,16 @@ public:
     distcoeff.at<double>(2) = D[2];
     distcoeff.at<double>(3) = D[3];
 
-    param_msg = ros::topic::waitForMessage<std_msgs::Float64MultiArray>("/extrinsic_calib_param");
-    if (param_msg != NULL)
-    {
-      param_msg_callback();
-    }
+    // Subscribe to calibration parameters
+    param_sub_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
+      "/extrinsic_calib_param", 10,
+      std::bind(&AssessCalibration::param_msg_callback, this, std::placeholders::_1));
   }
 
   // Get the mean and stdev from visualise_results.py
-  void param_msg_callback()
+  void param_msg_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
   {
+    param_msg = msg;
     // Need to inverse the transforms
     // In calibration, we figured out the transform to make camera into lidar
     // frame (here we do opposite) Here we apply transform to lidar i.e.
@@ -200,7 +213,7 @@ public:
     trans.setZ(param_msg->data[5]);
     transform.setRotation(quat);
     transform.setOrigin(trans);
-    // ROS_INFO("Inverting rotation and translation for projecting LiDAR points
+    // RCLCPP_INFO(node_->get_logger(), "Inverting rotation and translation for projecting LiDAR points
     // into camera image");
     tf_msg.transform.rotation.w = transform.inverse().getRotation().w();
     tf_msg.transform.rotation.x = transform.inverse().getRotation().x();
@@ -217,10 +230,9 @@ public:
            tf_msg.transform.translation.z);
 
     double r_val, y_val, p_val;
-    geometry_msgs::Quaternion q = tf_msg.transform.rotation;
-    tf::Quaternion tfq;
-    tf::quaternionMsgToTF(q, tfq);
-    tf::Matrix3x3(tfq).getEulerYPR(y_val, p_val, r_val);
+    geometry_msgs::msg::Quaternion q = tf_msg.transform.rotation;
+    tf2::Quaternion tfq(q.x, q.y, q.z, q.w);
+    tf2::Matrix3x3(tfq).getEulerYPR(y_val, p_val, r_val);
     rot_trans.x = tf_msg.transform.translation.x * 1000;
     rot_trans.y = tf_msg.transform.translation.y * 1000;
     rot_trans.z = tf_msg.transform.translation.z * 1000;
@@ -233,7 +245,7 @@ public:
 
   void results_and_visualise()
   {
-    printf("\n---- Calculating average reprojection error on %d samples ---- \n", sample_list.size());
+    printf("\n---- Calculating average reprojection error on %ld samples ---- \n", sample_list.size());
 
     // Calculate mean and stdev of pixel error across all test samples
     std::vector<float> pix_err, pix_errmm;
@@ -252,7 +264,7 @@ public:
       double h1_diff = abs(sample_list[i].heights[1] - board_dimensions.height);
       double be_dim_err = w0_diff + w1_diff + h0_diff + h1_diff;
 
-      printf(" %3d/%3d | dist=%6.3fm, dimerr=%8.3fmm | error: %7.3fpix  --> "
+      printf(" %3ld/%3ld | dist=%6.3fm, dimerr=%8.3fmm | error: %7.3fpix  --> "
              "%7.3fmm\n",
              i + 1, sample_list.size(), sample_list[i].distance_from_origin, be_dim_err, pe,
              pe * sample_list[i].pixeltometre * 1000);
@@ -268,7 +280,7 @@ public:
            param_msg->data[0], param_msg->data[1], param_msg->data[2], param_msg->data[3], param_msg->data[4],
            param_msg->data[5]);
 
-    printf("\nMean reprojection error across  %d samples\n", sample_list.size());
+    printf("\nMean reprojection error across  %ld samples\n", sample_list.size());
 
     printf("- Error (pix) = %6.3f pix, stdev = %6.3f\n", mean_pe, stdev_pe);
     printf("- Error (mm)  = %6.3f mm , stdev = %6.3f\n\n\n", mean_pemm, stdev_pemm);
@@ -284,7 +296,7 @@ public:
 
       if (image.empty())
       {
-        ROS_ERROR_STREAM("Could not read image file, check if image exists at: " << image_path);
+        RCLCPP_ERROR_STREAM(this->get_logger(), "Could not read image file, check if image exists at: " << image_path);
       }
 
       pcl::PointCloud<pcl::PointXYZIR>::Ptr og_cloud(new pcl::PointCloud<pcl::PointXYZIR>);
@@ -292,16 +304,19 @@ public:
 
       if (pcl::io::loadPCDFile<pcl::PointXYZIR>(pcd_path, *og_cloud) == -1)
       {
-        ROS_ERROR_STREAM("Could not read pcd file, check if pcd file exists at: " << pcd_path);
+        RCLCPP_ERROR_STREAM(this->get_logger(), "Could not read pcd file, check if pcd file exists at: " << pcd_path);
       }
       else
       {
-        sensor_msgs::PointCloud2 cloud_msg;
+        sensor_msgs::msg::PointCloud2 cloud_msg;
         pcl::toROSMsg(*og_cloud, cloud_msg);
 
-        sensor_msgs::PointCloud2 cloud_tf;
-        tf2::doTransform(cloud_msg, cloud_tf, tf_msg);
-        pcl::fromROSMsg(cloud_tf, *cloud);
+        sensor_msgs::msg::PointCloud2 cloud_tf;
+        // Manual transform since tf2_sensor_msgs may not be available
+        // tf2::doTransform(cloud_msg, cloud_tf, tf_msg);
+        // For now, do PCL-based transform
+        Eigen::Affine3d transform = tf2::transformToEigen(tf_msg.transform);
+        pcl::transformPointCloud(*og_cloud, *cloud, transform);
 
         if (cloud->points.size())
         {
@@ -351,7 +366,7 @@ public:
         }
       }
 
-      ROS_INFO_STREAM("Projecting points onto image for pose #" << (visualise_pose_num));
+      RCLCPP_INFO_STREAM(this->get_logger(), "Projecting points onto image for pose #" << (visualise_pose_num));
       compute_reprojection(sample_list[visualise_pose_num - 1], cam_project, lidar_project);
 
       for (auto& point : cam_project)
@@ -382,9 +397,9 @@ public:
     std::ifstream read_samples(pose_path);
     if (!read_samples.good())
     {
-      ROS_ERROR_STREAM("REPROJECTION - No pose file found at " << pose_path);
+      RCLCPP_ERROR_STREAM(this->get_logger(), "REPROJECTION - No pose file found at " << pose_path);
     }
-    ROS_INFO_STREAM("Importing samples from: " << pose_path);
+    RCLCPP_INFO_STREAM(this->get_logger(), "Importing samples from: " << pose_path);
     while (std::getline(read_samples, line, '\n'))
     {
       // used for breaking up words
@@ -439,7 +454,7 @@ public:
     }
 
     read_samples.close();
-    ROS_INFO_STREAM(sample_list.size() << " samples imported");
+    RCLCPP_INFO_STREAM(this->get_logger(), sample_list.size() << " samples imported");
   }
 
   float compute_reprojection(OptimisationSample sample, std::vector<cv::Point2d>& cam, std::vector<cv::Point2d>& lidar)
@@ -457,7 +472,7 @@ public:
     cam_centre_3d.push_back(sample.camera_centre);
     lidar_centre_3d.push_back(lidar_centre_camera_frame);
 
-    // ROS_INFO_STREAM("Camera distortion model = " << distortion_model);
+    // RCLCPP_INFO_STREAM(node_->get_logger(), "Camera distortion model = " << distortion_model);
     std::vector<cv::Point2d> cam_dist, lidar_dist;
 
     if (distortion_model == "fisheye")
@@ -487,8 +502,6 @@ public:
   }
 
 private:
-  ros::NodeHandle public_nh_;
-  ros::NodeHandle nh_;
 
   std::string distortion_model;
   std::vector<double> K, D;
@@ -497,20 +510,21 @@ private:
   cv::Size board_dimensions;
 
   std::string csv, data_dir;
-  ;
   int visualise_pose_num;
   bool visualise;
 
-  ros::Subscriber extrinsic_calib_param_sub_;
-  std_msgs::Float64MultiArray::ConstPtr param_msg;
+  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr param_sub_;
+  std_msgs::msg::Float64MultiArray::SharedPtr param_msg;
   std::vector<OptimisationSample> sample_list;
-  geometry_msgs::TransformStamped tf_msg;
+  geometry_msgs::msg::TransformStamped tf_msg;
   RotationTranslation rot_trans;
 };
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "assess_calibration");
-  AssessCalibration ac;
-  ros::spin();
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<AssessCalibration>();
+  rclcpp::spin(node);
+  rclcpp::shutdown();
+  return 0;
 }
