@@ -20,13 +20,12 @@ services:
         BASE_IMAGE: cam_lidar_calibration:base-jazzy
     image: cam_lidar_calibration:dev-jazzy
     container_name: cam_lidar_dev_jazzy
-    depends_on:
-      - base
     stdin_open: true
     tty: true
     privileged: true
     network_mode: host
     ipc: host
+    pid: host
     
     environment:
       - DISPLAY=${DISPLAY}
@@ -43,7 +42,10 @@ services:
       # Mount ONLY the cam_lidar_calibration package (not entire workspace)
       - ../:/ros2_ws/src/cam_lidar_calibration:rw
       
-      # Optional: Mount data directories
+      # Mount data directories
+      - /home/jjustin/Desktop/SSD Data/ITS Cam Calibration:/root/rosbags:rw
+      
+      # Optional: Mount additional data directories
       # - ${HOME}/datasets:/datasets:rw
       # - ${HOME}/bags:/bags:rw
       

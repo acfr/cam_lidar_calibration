@@ -157,6 +157,10 @@ FeatureExtractor::FeatureExtractor(rclcpp::Node::SharedPtr node)
   bounds_.z = node_->get_parameter("bounds.z").as_double();
   bounds_.voxel_res = node_->get_parameter("bounds.voxel_res").as_double();
 
+  // Register parameter callback for runtime updates
+  param_callback_handle_ = node_->add_on_set_parameters_callback(
+    std::bind(&FeatureExtractor::parametersCallback, this, std::placeholders::_1));
+
   // Synchronizer to get synchronized camera-lidar scan pairs
   image_sub_ = std::make_shared<image_sub_type>(
       node_.get(), i_params_.camera_topic,
@@ -625,16 +629,66 @@ geometry_msgs::msg::Quaternion normalToQuaternion(const cv::Point3d& normal)
 
 void FeatureExtractor::boundsCB(const rclcpp::Parameter& param)
 {
-  // ROS2 Note: Bounds are now updated via parameter callbacks
-  // This function is kept for API compatibility but parameters are handled differently
-  bounds_.x_min = node_->get_parameter("bounds.x_min").as_double();
-  bounds_.x_max = node_->get_parameter("bounds.x_max").as_double();
-  bounds_.y_min = node_->get_parameter("bounds.y_min").as_double();
-  bounds_.y_max = node_->get_parameter("bounds.y_max").as_double();
-  bounds_.z_min = node_->get_parameter("bounds.z_min").as_double();
-  bounds_.z_max = node_->get_parameter("bounds.z_max").as_double();
-  RCLCPP_INFO(node_->get_logger(), "Bounds updated: x[%lf,%lf] y[%lf,%lf] z[%lf,%lf]",
-           bounds_.x_min, bounds_.x_max, bounds_.y_min, bounds_.y_max, bounds_.z_min, bounds_.z_max);
+  // Deprecated: Use parametersCallback instead
+  // Kept for API compatibility
+}
+
+rcl_interfaces::msg::SetParametersResult FeatureExtractor::parametersCallback(
+  const std::vector<rclcpp::Parameter>& parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  
+  for (const auto& param : parameters)
+  {
+    if (param.get_name() == "bounds.x_min")
+    {
+      bounds_.x_min = param.as_double();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.x_min: %f", bounds_.x_min);
+    }
+    else if (param.get_name() == "bounds.x_max")
+    {
+      bounds_.x_max = param.as_double();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.x_max: %f", bounds_.x_max);
+    }
+    else if (param.get_name() == "bounds.y_min")
+    {
+      bounds_.y_min = param.as_double();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.y_min: %f", bounds_.y_min);
+    }
+    else if (param.get_name() == "bounds.y_max")
+    {
+      bounds_.y_max = param.as_double();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.y_max: %f", bounds_.y_max);
+    }
+    else if (param.get_name() == "bounds.z_min")
+    {
+      bounds_.z_min = param.as_double();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.z_min: %f", bounds_.z_min);
+    }
+    else if (param.get_name() == "bounds.z_max")
+    {
+      bounds_.z_max = param.as_double();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.z_max: %f", bounds_.z_max);
+    }
+    else if (param.get_name() == "bounds.k")
+    {
+      bounds_.k = param.as_int();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.k: %d", bounds_.k);
+    }
+    else if (param.get_name() == "bounds.z")
+    {
+      bounds_.z = param.as_double();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.z: %f", bounds_.z);
+    }
+    else if (param.get_name() == "bounds.voxel_res")
+    {
+      bounds_.voxel_res = param.as_double();
+      RCLCPP_INFO(node_->get_logger(), "Updated bounds.voxel_res: %f", bounds_.voxel_res);
+    }
+  }
+  
+  return result;
 }
 
 void FeatureExtractor::visualiseSamples()

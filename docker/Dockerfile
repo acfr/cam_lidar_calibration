@@ -24,8 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-rqt-common-plugins \
     ros-jazzy-robot-state-publisher \
     ros-jazzy-joint-state-publisher \
+    ros-jazzy-ublox-msgs \
     # Python and build tools
     python3-pip \
+    python3-venv \
     python3-colcon-common-extensions \
     python3-rosdep \
     python3-vcstool \
@@ -51,8 +53,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies for calibration
-RUN pip3 install --no-cache-dir \
+# Create Python virtual environment with system site-packages (for ROS2 compatibility)
+RUN python3 -m venv --system-site-packages /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install Python dependencies for calibration in the venv
+RUN /opt/venv/bin/pip install --no-cache-dir \
     pandas \
     scipy \
     numpy \
@@ -64,7 +70,8 @@ RUN if [ ! -d "/etc/ros/rosdep" ]; then rosdep init; fi && \
     rosdep update
 
 # Setup ROS2 environment
-RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
+RUN echo "source /opt/venv/bin/activate" >> /root/.bashrc && \
+    echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
     echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc && \
     echo "alias cb='colcon build --symlink-install'" >> /root/.bashrc && \
     echo "alias cs='source install/setup.bash'" >> /root/.bashrc

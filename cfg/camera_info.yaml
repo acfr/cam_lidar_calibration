@@ -1,5 +1,26 @@
-distortion_model: "fisheye"
-width: 1920
-height: 1208
-D: [-0.097824,0.141429,-0.148385,0.055918]
-K: [959.554,0.0,940.789,0.0,960.194,670.737,0.0,0.0,1]
+image_width: 2048
+image_height: 1536
+camera_name: camera
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [1296.04008,    0.     , 1030.25061,
+            0.     , 1295.88787,  757.64554,
+            0.     ,    0.     ,    1.     ]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.207126, 0.072941, 0.000139, -0.000431, 0.000000]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [1140.65491,    0.     , 1029.36121,    0.     ,
+            0.     , 1201.2627 ,  755.86153,    0.     ,
+            0.     ,    0.     ,    1.     ,    0.     ]

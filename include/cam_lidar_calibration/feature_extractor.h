@@ -17,6 +17,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <cv_bridge/cv_bridge.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
 #include <geometry_msgs/msg/transform.hpp>
@@ -63,6 +64,9 @@ public:
   void visualiseSamples();
 
   void boundsCB(const rclcpp::Parameter& param);
+
+  rcl_interfaces::msg::SetParametersResult parametersCallback(
+    const std::vector<rclcpp::Parameter>& parameters);
 
   bool import_samples;
 
@@ -132,6 +136,7 @@ private:
   std::shared_ptr<image_transport::ImageTransport> it_;
   std::shared_ptr<image_transport::ImageTransport> it_p_;
   std::shared_ptr<rclcpp::ParameterEventHandler> param_handler_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
 
   std::string curdatetime_;
   std::string newdata_folder_;

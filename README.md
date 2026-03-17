@@ -131,6 +131,8 @@ That's it! If this quick start worked successfully, you can begin using this too
 
 # 2. Calibration with your own data
 
+**📚 For a detailed step-by-step tutorial using ROS2 bag files, see [TUTORIAL.md](TUTORIAL.md)**
+
 To use this package with your own data, ensure that your bag file has the following topics:
 - **Lidar**: 3D pointcloud of point type XYZIR, published as [sensor_msgs::PointCloud2](http://docs.ros.org/en/api/sensor_msgs/html/msg/PointCloud2.html). This package relies on the ring value and so if you don't have that, you need to modify your lidar driver to use this package.
 - **Monocular camera:** an image published as [sensor_msgs::Image](http://docs.ros.org/en/api/sensor_msgs/html/msg/Image.html) and the corresponding meta-information topic ([sensor_msgs::CameraInfo](http://docs.ros.org/en/api/sensor_msgs/html/msg/CameraInfo.html)).

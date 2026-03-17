@@ -169,6 +169,7 @@ install(DIRECTORY data/
 
 install(PROGRAMS
   scripts/visualise_results.py
+  scripts/publish_camera_info.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
