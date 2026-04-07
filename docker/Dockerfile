@@ -1,30 +1,33 @@
-# Base image with all ROS2 Jazzy dependencies for cam_lidar_calibration
+# Base image with all ROS2 dependencies for cam_lidar_calibration
 # This image is built infrequently and contains all system-level dependencies
 
-FROM osrf/ros:jazzy-desktop-full
+ARG ROS_DISTRO=jazzy
+
+FROM osrf/ros:${ROS_DISTRO}-desktop-full
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 LABEL maintainer="ACFR"
-LABEL description="Base image for ROS2 Jazzy camera-lidar calibration with perception libraries"
+LABEL description="Base image for ROS2 camera-lidar calibration with perception libraries"
 
 # Install perception and development tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # ROS2 perception packages
-    ros-jazzy-pcl-ros \
-    ros-jazzy-pcl-conversions \
-    ros-jazzy-cv-bridge \
-    ros-jazzy-image-transport \
-    ros-jazzy-image-transport-plugins \
-    ros-jazzy-vision-opencv \
-    ros-jazzy-rviz2 \
-    ros-jazzy-tf2-eigen \
-    ros-jazzy-tf2-geometry-msgs \
-    ros-jazzy-rqt \
-    ros-jazzy-rqt-common-plugins \
-    ros-jazzy-robot-state-publisher \
-    ros-jazzy-joint-state-publisher \
-    ros-jazzy-ublox-msgs \
+    ros-${ROS_DISTRO}-rmw-zenoh-cpp \
+    ros-${ROS_DISTRO}-pcl-ros \
+    ros-${ROS_DISTRO}-pcl-conversions \
+    ros-${ROS_DISTRO}-cv-bridge \
+    ros-${ROS_DISTRO}-image-transport \
+    ros-${ROS_DISTRO}-image-transport-plugins \
+    ros-${ROS_DISTRO}-vision-opencv \
+    ros-${ROS_DISTRO}-rviz2 \
+    ros-${ROS_DISTRO}-tf2-eigen \
+    ros-${ROS_DISTRO}-tf2-geometry-msgs \
+    ros-${ROS_DISTRO}-rqt \
+    ros-${ROS_DISTRO}-rqt-common-plugins \
+    ros-${ROS_DISTRO}-robot-state-publisher \
+    ros-${ROS_DISTRO}-joint-state-publisher \
+    ros-${ROS_DISTRO}-ublox-msgs \
     # Python and build tools
     python3-pip \
     python3-venv \
@@ -71,7 +74,7 @@ RUN if [ ! -d "/etc/ros/rosdep" ]; then rosdep init; fi && \
 
 # Setup ROS2 environment
 RUN echo "source /opt/venv/bin/activate" >> /root/.bashrc && \
-    echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
+    echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc && \
     echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc && \
     echo "alias cb='colcon build --symlink-install'" >> /root/.bashrc && \
     echo "alias cs='source install/setup.bash'" >> /root/.bashrc

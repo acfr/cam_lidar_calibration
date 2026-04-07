@@ -1,13 +1,13 @@
-version: '3.8'
-
 services:
   # Base image with all dependencies (build once, use many times)
   base:
     build:
       context: .
       dockerfile: Dockerfile
-    image: cam_lidar_calibration:base-jazzy
-    container_name: cam_lidar_base_jazzy
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+    image: cam_lidar_calibration:base-${ROS_DISTRO:-jazzy}
+    container_name: cam_lidar_base_${ROS_DISTRO:-jazzy}
     profiles:
       - base  # Only built when explicitly requested
 
@@ -17,9 +17,9 @@ services:
       context: .
       dockerfile: Dockerfile.dev
       args:
-        BASE_IMAGE: cam_lidar_calibration:base-jazzy
-    image: cam_lidar_calibration:dev-jazzy
-    container_name: cam_lidar_dev_jazzy
+        BASE_IMAGE: cam_lidar_calibration:base-${ROS_DISTRO:-jazzy}
+    image: cam_lidar_calibration:dev-${ROS_DISTRO:-jazzy}
+    container_name: cam_lidar_dev_${ROS_DISTRO:-jazzy}
     stdin_open: true
     tty: true
     privileged: true

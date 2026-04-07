@@ -9,6 +9,7 @@ set -e
 BUILD_BASE="off"
 BUILD_DEV="on"
 NO_CACHE=""
+ROS_DISTRO="jazzy"
 
 function usage() {
     echo "Usage: $0 [OPTIONS]"
@@ -20,6 +21,7 @@ function usage() {
     echo "    -d, --dev               Build only the dev image (default)"
     echo "    -a, --all               Build both base and dev images"
     echo "    -n, --no-cache          Build without using cache"
+    echo "    -r, --distro DISTRO     ROS2 distribution (default: jazzy)"
     echo "    -h, --help              Display this help message"
     echo ""
     echo "Examples:"
@@ -27,10 +29,11 @@ function usage() {
     echo "    $0 --all                # Build both base and dev images"
     echo "    $0 --base               # Build only base image"
     echo "    $0 --all --no-cache     # Clean build of both images"
+    echo "    $0 --all --distro humble # Build for ROS2 Humble"
 }
 
-OPTS=$(getopt --options bdanh \
-         --long base,dev,all,no-cache,help \
+OPTS=$(getopt --options bdanr:h \
+         --long base,dev,all,no-cache,distro:,help \
          --name "$0" -- "$@")
 
 if [ $? != 0 ]; then
@@ -61,6 +64,10 @@ while true; do
       NO_CACHE="--no-cache"
       shift
       ;;
+    -r|--distro)
+      ROS_DISTRO="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -80,6 +87,8 @@ echo "========================================"
 echo "  Building cam_lidar_calibration Images"
 echo "========================================"
 echo ""
+echo "ROS2 Distribution: $ROS_DISTRO"
+echo ""
 
 # Build base image
 if [ "$BUILD_BASE" == "on" ]; then
@@ -88,8 +97,9 @@ if [ "$BUILD_BASE" == "on" ]; then
     echo ""
     
     docker build $NO_CACHE \
+        --build-arg ROS_DISTRO=$ROS_DISTRO \
         -f Dockerfile \
-        -t cam_lidar_calibration:base-jazzy \
+        -t cam_lidar_calibration:base-$ROS_DISTRO \
         .
     
     if [ $? -ne 0 ]; then
@@ -98,19 +108,19 @@ if [ "$BUILD_BASE" == "on" ]; then
     fi
     
     echo ""
-    echo "✓ Base image built successfully: cam_lidar_calibration:base-jazzy"
+    echo "✓ Base image built successfully: cam_lidar_calibration:base-$ROS_DISTRO"
     echo ""
 fi
 
 # Build dev image
 if [ "$BUILD_DEV" == "on" ]; then
     # Check if base image exists
-    if ! docker image inspect cam_lidar_calibration:base-jazzy >/dev/null 2>&1; then
+    if ! docker image inspect cam_lidar_calibration:base-$ROS_DISTRO >/dev/null 2>&1; then
         echo "ERROR: Base image not found!"
         echo "Please build the base image first with:"
-        echo "    $0 --base"
+        echo "    $0 --base --distro $ROS_DISTRO"
         echo "or build both with:"
-        echo "    $0 --all"
+        echo "    $0 --all --distro $ROS_DISTRO"
         exit 1
     fi
     
@@ -119,8 +129,8 @@ if [ "$BUILD_DEV" == "on" ]; then
     
     docker build $NO_CACHE \
         -f Dockerfile.dev \
-        --build-arg BASE_IMAGE=cam_lidar_calibration:base-jazzy \
-        -t cam_lidar_calibration:dev-jazzy \
+        --build-arg BASE_IMAGE=cam_lidar_calibration:base-$ROS_DISTRO \
+        -t cam_lidar_calibration:dev-$ROS_DISTRO \
         .
     
     if [ $? -ne 0 ]; then
@@ -129,7 +139,7 @@ if [ "$BUILD_DEV" == "on" ]; then
     fi
     
     echo ""
-    echo "✓ Dev image built successfully: cam_lidar_calibration:dev-jazzy"
+    echo "✓ Dev image built successfully: cam_lidar_calibration:dev-$ROS_DISTRO"
     echo ""
 fi
 
@@ -139,14 +149,14 @@ echo "========================================"
 echo ""
 
 if [ "$BUILD_BASE" == "on" ]; then
-    echo "Base image: cam_lidar_calibration:base-jazzy"
+    echo "Base image: cam_lidar_calibration:base-$ROS_DISTRO"
     echo "  - Contains all ROS2 and system dependencies"
     echo "  - Rebuild only when dependencies change"
     echo ""
 fi
 
 if [ "$BUILD_DEV" == "on" ]; then
-    echo "Dev image: cam_lidar_calibration:dev-jazzy"
+    echo "Dev image: cam_lidar_calibration:dev-$ROS_DISTRO"
     echo "  - Extends base image"
     echo "  - Mounts source code for development"
     echo ""

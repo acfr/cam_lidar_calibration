@@ -1,6 +1,9 @@
 # Makefile for cam_lidar_calibration Docker management
 # Provides convenient shortcuts for common Docker operations
 
+# Default ROS distribution (can be overridden: make build-all ROS_DISTRO=humble)
+ROS_DISTRO ?= jazzy
+
 .PHONY: help build-base build-dev build-all run run-no-gpu stop clean exec logs
 
 # Default target
@@ -8,6 +11,9 @@ help:
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo "  Camera-LiDAR Calibration Docker Commands"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@echo "Current ROS Distribution: $(ROS_DISTRO)"
+	@echo "(Override with: make <target> ROS_DISTRO=humble)"
 	@echo ""
 	@echo "Build Commands:"
 	@echo "  make build-all      Build both base and dev images"
@@ -30,56 +36,56 @@ help:
 
 # Build targets
 build-all:
-	@./build.sh --all
+	@./build.sh --all --distro $(ROS_DISTRO)
 
 build-base:
-	@./build.sh --base
+	@./build.sh --base --distro $(ROS_DISTRO)
 
 build-dev:
-	@./build.sh --dev
+	@./build.sh --dev --distro $(ROS_DISTRO)
 
 rebuild:
-	@./build.sh --all --no-cache
+	@./build.sh --all --no-cache --distro $(ROS_DISTRO)
 
 # Run targets
 run:
-	@./run.sh
+	@ROS_DISTRO=$(ROS_DISTRO) ./run.sh
 
 run-no-gpu:
-	@./run.sh --cuda off
+	@ROS_DISTRO=$(ROS_DISTRO) ./run.sh --cuda off
 
 # Container management
 exec:
-	@docker compose exec dev bash
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose exec dev bash
 
 stop:
-	@docker compose down
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose down
 
 logs:
-	@docker compose logs -f dev
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose logs -f dev
 
 # Cleaning
 clean:
 	@echo "Stopping containers..."
-	@docker compose down -v
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose down -v
 	@echo "Removing images..."
-	@docker rmi cam_lidar_calibration:dev-jazzy 2>/dev/null || true
-	@docker rmi cam_lidar_calibration:base-jazzy 2>/dev/null || true
+	@docker rmi cam_lidar_calibration:dev-$(ROS_DISTRO) 2>/dev/null || true
+	@docker rmi cam_lidar_calibration:base-$(ROS_DISTRO) 2>/dev/null || true
 	@echo "Cleanup complete!"
 
 # Workspace operations (executed inside container)
 build-pkg:
-	@docker compose exec dev bash -c "cd /ros2_ws && colcon build --packages-select cam_lidar_calibration --symlink-install"
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose exec dev bash -c "cd /ros2_ws && colcon build --packages-select cam_lidar_calibration --symlink-install"
 
 build-ws:
-	@docker compose exec dev bash -c "cd /ros2_ws && colcon build --symlink-install"
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose exec dev bash -c "cd /ros2_ws && colcon build --symlink-install"
 
 clean-ws:
-	@docker compose exec dev bash -c "cd /ros2_ws && rm -rf build install log"
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose exec dev bash -c "cd /ros2_ws && rm -rf build install log"
 
 # Launch operations
 launch-calibration:
-	@docker compose exec dev bash -c "source /ros2_ws/install/setup.bash && ros2 launch cam_lidar_calibration run_optimiser.launch.py"
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose exec dev bash -c "source /ros2_ws/install/setup.bash && ros2 launch cam_lidar_calibration run_optimiser.launch.py"
 
 launch-assess:
-	@docker compose exec dev bash -c "source /ros2_ws/install/setup.bash && ros2 launch cam_lidar_calibration assess_results.launch.py"
+	@ROS_DISTRO=$(ROS_DISTRO) docker compose exec dev bash -c "source /ros2_ws/install/setup.bash && ros2 launch cam_lidar_calibration assess_results.launch.py"

@@ -7,6 +7,7 @@ set -e
 # Default settings
 CUDA="on"
 BUILD="off"
+ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 
 function usage() {
     echo "Usage: $0 [OPTIONS]"
@@ -18,16 +19,18 @@ function usage() {
     echo "                             Default: $CUDA"
     echo "    -b, --build              Build the dev image before running."
     echo "                             Default: $BUILD"
+    echo "    -r, --distro DISTRO      ROS2 distribution (default: jazzy)"
     echo "    -h, --help               Display this usage and exit."
     echo ""
     echo "Examples:"
     echo "    $0                       # Run with GPU enabled"
     echo "    $0 --cuda off            # Run without GPU"
     echo "    $0 --build               # Build dev image and run"
+    echo "    $0 --distro humble       # Run with ROS2 Humble"
 }
 
-OPTS=$(getopt --options c:bh \
-         --long cuda:,build,help \
+OPTS=$(getopt --options c:br:h \
+         --long cuda:,build,distro:,help \
          --name "$0" -- "$@")
 
 if [ $? != 0 ]; then
@@ -51,6 +54,10 @@ while true; do
       BUILD="on"
       shift
       ;;
+    -r|--distro)
+      ROS_DISTRO="$2"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -73,16 +80,20 @@ done
 xhost +local:docker > /dev/null 2>&1
 
 echo "========================================"
-echo "  ROS2 Jazzy Camera-LiDAR Calibration"
+echo "  ROS2 Camera-LiDAR Calibration"
 echo "========================================"
+echo "Distribution: $ROS_DISTRO"
 echo "CUDA/GPU: $CUDA"
 echo "Build: $BUILD"
 echo ""
 
+# Export ROS_DISTRO for docker-compose
+export ROS_DISTRO
+
 # Build dev image if requested
 if [ "$BUILD" == "on" ]; then
     echo "Building dev image..."
-    ./build.sh --dev
+    ./build.sh --dev --distro $ROS_DISTRO
     if [ $? -ne 0 ]; then
         echo "Build failed!"
         exit 1
@@ -91,17 +102,17 @@ if [ "$BUILD" == "on" ]; then
 fi
 
 # Check if base and dev images exist
-if ! docker image inspect cam_lidar_calibration:base-jazzy >/dev/null 2>&1; then
+if ! docker image inspect cam_lidar_calibration:base-$ROS_DISTRO >/dev/null 2>&1; then
     echo "ERROR: Base image not found!"
     echo "Please build the base image first:"
-    echo "    ./build.sh --all"
+    echo "    ./build.sh --all --distro $ROS_DISTRO"
     exit 1
 fi
 
-if ! docker image inspect cam_lidar_calibration:dev-jazzy >/dev/null 2>&1; then
+if ! docker image inspect cam_lidar_calibration:dev-$ROS_DISTRO >/dev/null 2>&1; then
     echo "ERROR: Dev image not found!"
     echo "Please build the dev image:"
-    echo "    ./build.sh --dev"
+    echo "    ./build.sh --dev --distro $ROS_DISTRO"
     exit 1
 fi
 
