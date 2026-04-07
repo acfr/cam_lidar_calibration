@@ -7,6 +7,12 @@ FROM osrf/ros:${ROS_DISTRO}-desktop-full
 
 ARG DEBIAN_FRONTEND=noninteractive
 
+# Use Zenoh as middleware
+ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp
+
+# Set ROS 2 environment variables
+ENV ROS_DOMAIN_ID=5
+
 LABEL maintainer="ACFR"
 LABEL description="Base image for ROS2 camera-lidar calibration with perception libraries"
 
