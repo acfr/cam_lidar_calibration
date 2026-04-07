@@ -1113,8 +1113,12 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::msg::Image::Co
   PointCloud::Ptr distoffset_cloud(new PointCloud);
   distoffset_passthrough(pointcloud, distoffset_cloud);
   
+  // Always publish the experimental region with proper timestamp
+  distoffset_cloud->header.frame_id = lidar_frame_;
   sensor_msgs::msg::PointCloud2 distoffset_msg;
   pcl::toROSMsg(*distoffset_cloud, distoffset_msg);
+  distoffset_msg.header.stamp = node_->now();
+  distoffset_msg.header.frame_id = lidar_frame_;
   experimental_region_pub_->publish(distoffset_msg);
 
   if (flag == srv::Optimise::Request::CAPTURE_BCKGRND)
@@ -1155,7 +1159,17 @@ void FeatureExtractor::extractRegionOfInterest(const sensor_msgs::msg::Image::Co
     cloud_filtered->header.frame_id = lidar_frame_;
     sensor_msgs::msg::PointCloud2 filtered_msg2;
     pcl::toROSMsg(*cloud_filtered, filtered_msg2);
+    filtered_msg2.header.stamp = node_->now();
+    filtered_msg2.header.frame_id = lidar_frame_;
     subtracted_cloud_pub_->publish(filtered_msg2);
+  }
+  else
+  {
+    // Before background is captured, publish empty subtracted cloud
+    sensor_msgs::msg::PointCloud2 empty_msg;
+    empty_msg.header.stamp = node_->now();
+    empty_msg.header.frame_id = lidar_frame_;
+    subtracted_cloud_pub_->publish(empty_msg);
   }
 
   if (flag == srv::Optimise::Request::CAPTURE)

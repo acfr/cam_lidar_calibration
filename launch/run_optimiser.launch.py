@@ -59,7 +59,15 @@ def generate_launch_description():
     # Note: rqt_reconfigure equivalent in ROS2 is ros2 param or rqt
     # You can use: ros2 run rqt_reconfigure rqt_reconfigure
     
+    rmw_zenoh_node = Node(
+        package='rmw_zenoh_cpp',
+        executable='rmw_zenoh_cpp',
+        name='rmw_zenoh_cpp',
+        output='screen',
+    )
+    
     return LaunchDescription([
+        rmw_zenoh_node,
         import_samples_arg,
         feature_extraction_node,
         rviz_node,

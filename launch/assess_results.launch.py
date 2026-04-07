@@ -70,10 +70,18 @@ def generate_launch_description():
             }
         ]
     )
+
+    rmw_zenoh_node = Node(
+        package='rmw_zenoh_cpp',
+        executable='rmw_zenoh_cpp',
+        name='rmw_zenoh_cpp',
+        output='screen',
+    )
     
     return LaunchDescription([
         csv_arg,
         visualise_arg,
+        rmw_zenoh_node,
         visualise_results_node,
         assess_node,
     ])
